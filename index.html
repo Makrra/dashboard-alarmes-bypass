@@ -59,6 +59,11 @@ body {
 .btn:hover { opacity: .85; }
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-block { width: 100%; }
+.login-toggle {
+  margin-top: 16px; font-size: 0.78rem; color: var(--accent2);
+  cursor: pointer; text-decoration: underline;
+}
+.login-toggle:hover { color: var(--accent); }
 /* HEADER */
 .header {
   background: var(--surface);
@@ -114,11 +119,15 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 </head>
 <body>
 
-<!-- ======= LOGIN ======= -->
+<!-- ======= LOGIN / CADASTRO ======= -->
 <div class="login-screen" id="login-screen">
   <div class="login-card">
     <div class="login-logo">⚠️ Alarmes &amp; Bypass</div>
-    <div class="login-sub">Faça login para acessar o painel</div>
+    <div class="login-sub" id="login-sub">Faça login para acessar o painel</div>
+    <div class="form-group" id="grupo-nome" style="display:none">
+      <label class="form-label">Nome completo</label>
+      <input class="form-control" id="signup-nome" type="text" placeholder="Seu nome" autocomplete="name">
+    </div>
     <div class="form-group">
       <label class="form-label">E-mail</label>
       <input class="form-control" id="login-email" type="email" placeholder="seu@email.com" autocomplete="username">
@@ -127,8 +136,22 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
       <label class="form-label">Senha</label>
       <input class="form-control" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn btn-primary btn-block" onclick="doLogin()">Entrar</button>
+    <button class="btn btn-primary btn-block" id="btn-principal" onclick="doLogin()">Entrar</button>
     <div class="login-error" id="login-error"></div>
+    <div class="login-toggle" id="login-toggle" onclick="alternarModo()">Não tem conta? Cadastre-se</div>
+  </div>
+</div>
+
+<!-- ======= AGUARDANDO APROVAÇÃO ======= -->
+<div class="login-screen" id="pending-screen" style="display:none">
+  <div class="login-card">
+    <div class="login-logo">⏳ Aguardando aprovação</div>
+    <div class="login-sub">
+      Seu cadastro foi recebido. Um administrador precisa liberar seu acesso
+      antes que você consiga ver os dados. Tente novamente mais tarde ou
+      entre em contato.
+    </div>
+    <button class="btn btn-primary btn-block" onclick="sair()">Sair</button>
   </div>
 </div>
 
@@ -211,17 +234,61 @@ const estado = {
 
 // ---------- AUTENTICAÇÃO ----------
 
-auth.onAuthStateChanged(user => {
-  if (user) {
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
+let modoCadastro = false;
+
+function mostrarTela(id) {
+  document.getElementById('login-screen').style.display = id === 'login-screen' ? 'flex' : 'none';
+  document.getElementById('pending-screen').style.display = id === 'pending-screen' ? 'flex' : 'none';
+  document.getElementById('app').style.display = id === 'app' ? 'block' : 'none';
+}
+
+async function estaAprovado() {
+  try {
+    await db.collection('metadados').doc('periodos').get();
+    return true;
+  } catch (e) {
+    return false; // permission-denied => autenticado mas ainda nao esta na allowlist
+  }
+}
+
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    mostrarTela('login-screen');
+    return;
+  }
+  if (await estaAprovado()) {
     document.getElementById('usuario-logado').textContent = user.email;
+    mostrarTela('app');
     carregarPeriodos();
   } else {
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('app').style.display = 'none';
+    mostrarTela('pending-screen');
   }
 });
+
+function alternarModo() {
+  modoCadastro = !modoCadastro;
+  document.getElementById('grupo-nome').style.display = modoCadastro ? 'block' : 'none';
+  document.getElementById('login-sub').textContent = modoCadastro
+    ? 'Crie sua conta - o acesso só é liberado após aprovação'
+    : 'Faça login para acessar o painel';
+  const botao = document.getElementById('btn-principal');
+  botao.textContent = modoCadastro ? 'Cadastrar' : 'Entrar';
+  botao.onclick = modoCadastro ? doCadastro : doLogin;
+  document.getElementById('login-toggle').textContent = modoCadastro
+    ? 'Já tem conta? Entrar'
+    : 'Não tem conta? Cadastre-se';
+  document.getElementById('login-error').textContent = '';
+}
+
+function traduzErroAuth(e) {
+  if (e.code === 'auth/email-already-in-use') return 'Esse e-mail já está cadastrado';
+  if (e.code === 'auth/invalid-email') return 'E-mail inválido';
+  if (e.code === 'auth/weak-password') return 'Senha muito fraca (mínimo 6 caracteres)';
+  if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+    return 'E-mail ou senha inválidos';
+  }
+  return 'Não foi possível concluir. Tente novamente.';
+}
 
 function doLogin() {
   const email = document.getElementById('login-email').value.trim();
@@ -229,13 +296,32 @@ function doLogin() {
   const erroEl = document.getElementById('login-error');
   erroEl.textContent = '';
   if (!email || !senha) { erroEl.textContent = 'Preencha e-mail e senha'; return; }
-  auth.signInWithEmailAndPassword(email, senha).catch(() => {
-    erroEl.textContent = 'E-mail ou senha inválidos';
+  auth.signInWithEmailAndPassword(email, senha).catch(e => {
+    erroEl.textContent = traduzErroAuth(e);
   });
 }
 
+async function doCadastro() {
+  const nome = document.getElementById('signup-nome').value.trim();
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-password').value;
+  const erroEl = document.getElementById('login-error');
+  erroEl.textContent = '';
+  if (!nome || !email || !senha) { erroEl.textContent = 'Preencha nome, e-mail e senha'; return; }
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, senha);
+    await cred.user.updateProfile({ displayName: nome });
+    await db.collection('solicitacoes_cadastro').doc(cred.user.uid).set({
+      email, nome, criado_em: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    // onAuthStateChanged detecta o login e mostra a tela de "aguardando aprovação".
+  } catch (e) {
+    erroEl.textContent = traduzErroAuth(e);
+  }
+}
+
 document.getElementById('login-password').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doLogin();
+  if (e.key === 'Enter') document.getElementById('btn-principal').onclick();
 });
 
 function sair() {
