@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+build/
+dist/
+Relatorios/
+
+# Credenciais Firebase - nunca versionar
+credenciais/
+*serviceAccount*.json
+*firebase-service-account*.json
+.env
+
+# Dados brutos e material de terceiros - ficam so localmente, nunca no
+# repositorio publico (dados de operador so devem ser vistos via login no
+# painel, nao direto no GitHub)
+000_Dados Analise/
+001_Material Estudo/
