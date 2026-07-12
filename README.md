@@ -2,8 +2,10 @@
 
 Página estática (sem build step) que exibe, com login e filtros, as sessões e
 resumos de Alarmes/Bypass processados a partir dos `.ALG` do SCADA e
-enviados mensalmente ao Firestore pelo projeto
-[gestão-alarmes-eventos-bypasses](../gestão-alarmes-eventos-bypasses).
+enviados mensalmente ao Firestore pelos scripts em [`../src`](../src) (pasta
+raiz do projeto, `gestão-alarmes-eventos-bypasses`). Este repositório git é
+independente (remote próprio no GitHub, para o GitHub Pages), só vive
+fisicamente dentro da pasta do projeto por conveniência.
 
 ## Como funciona
 
@@ -34,7 +36,8 @@ conseguem ler os dados — o repositório é público, mas os dados não.
 
 ## Adicionar/remover usuário
 
-Não existe autocadastro na página. Use os scripts do projeto principal:
+Não existe autocadastro na página. A partir da raiz do projeto
+(`gestão-alarmes-eventos-bypasses`, pasta acima desta):
 
 ```
 python src/gerenciar_usuarios_firebase.py adicionar email@exemplo.com "senha-temporaria" "Nome Sobrenome"
@@ -44,7 +47,7 @@ python src/gerenciar_usuarios_firebase.py listar
 
 ## Enviar dados do mês
 
-No projeto `gestão-alarmes-eventos-bypasses`:
+Também a partir da raiz do projeto:
 
 ```
 python src/enviar_firebase.py "C:\...\2026"
