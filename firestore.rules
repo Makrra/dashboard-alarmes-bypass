@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // So permite leitura para usuarios autenticados que TAMBEM estejam na
+    // allowlist usuarios_permitidos/{uid}. Isso e necessario porque, com o
+    // provedor Email/Password habilitado, qualquer pessoa com a apiKey
+    // publica pode se autocadastrar via API do Identity Toolkit mesmo sem
+    // um botao de cadastro na UI - "request.auth != null" sozinho nao seria
+    // suficiente. A allowlist so e populada pelo Admin SDK (script Python),
+    // nunca pelo client.
+    function estaAutorizado() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/usuarios_permitidos/$(request.auth.uid));
+    }
+
+    match /sessoes_alarme/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+    match /sessoes_bypass/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+    match /resumos_alarme/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+    match /resumos_bypass/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+    match /metadados/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+
+    // Nunca legivel/gravavel diretamente pelo client - so usada
+    // internamente por estaAutorizado() via exists(), que tem acesso
+    // elevado dentro da propria regra.
+    match /usuarios_permitidos/{uid} {
+      allow read, write: if false;
+    }
+
+    // Default-deny explicito para qualquer colecao futura nao prevista aqui.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

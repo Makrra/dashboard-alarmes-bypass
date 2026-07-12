@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#1a1a2e">
+<title>Alarmes &amp; Bypass | Painel</title>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+:root {
+  --bg: #0f0f1a;
+  --surface: #1a1a2e;
+  --card: #16213e;
+  --accent: #e94560;
+  --accent2: #4ea8de;
+  --green: #00b894;
+  --yellow: #fdcb6e;
+  --red: #ff6b6b;
+  --text: #e2e2e2;
+  --muted: #8892a4;
+  --border: #2a2a45;
+  --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+/* LOGIN */
+.login-screen {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 500; padding: 20px;
+}
+.login-card {
+  width: 100%; max-width: 360px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px 24px; text-align: center;
+  box-shadow: 0 4px 24px rgba(0,0,0,.4);
+}
+.login-logo { font-size: 1.6rem; font-weight: 800; color: var(--accent2); margin-bottom: 4px; }
+.login-sub { font-size: 0.8rem; color: var(--muted); margin-bottom: 24px; }
+.login-error { color: var(--red); font-size: 0.8rem; margin-top: 10px; min-height: 1.2em; }
+.form-group { text-align: left; margin-bottom: 14px; }
+.form-label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
+.form-control {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; outline: none;
+}
+.form-control:focus { border-color: var(--accent2); }
+.btn {
+  border: none; border-radius: 8px; padding: 10px 16px; font-size: 0.9rem;
+  font-weight: 600; cursor: pointer; transition: opacity .15s;
+}
+.btn:hover { opacity: .85; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-block { width: 100%; }
+/* HEADER */
+.header {
+  background: var(--surface);
+  padding: 16px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.header h1 { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+.header .subtitle { font-size: 0.75rem; color: var(--muted); }
+.logout-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 8px; padding: 6px 12px; font-size: 0.78rem; cursor: pointer;
+}
+.logout-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* LAYOUT */
+.container { padding: 16px; max-width: 1200px; margin: 0 auto; }
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+}
+/* TABS */
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; }
+.tab-btn {
+  flex-shrink: 0; padding: 7px 16px; border-radius: 20px;
+  border: 1px solid var(--border); background: none; color: var(--muted);
+  font-size: 0.82rem; cursor: pointer; transition: all .15s;
+}
+.tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.subtabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.subtab-btn {
+  padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: none; color: var(--muted); font-size: 0.78rem; cursor: pointer;
+}
+.subtab-btn.active { background: var(--accent2); border-color: var(--accent2); color: #0f0f1a; font-weight: 600; }
+/* FILTERS */
+.filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.filtros label { font-size: 0.72rem; color: var(--muted); display: block; margin-bottom: 4px; }
+/* TABLE */
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .4px; position: sticky; top: 0; background: var(--card); }
+tbody tr:hover { background: rgba(255,255,255,.03); }
+.badge { font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+.badge-ativo { background: rgba(255,107,107,.15); color: var(--red); }
+.badge-encerrado { background: rgba(0,184,148,.15); color: var(--green); }
+.badge-sozinho { background: rgba(253,203,110,.15); color: var(--yellow); }
+.resultado-info { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.85rem; }
+.loading { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<!-- ======= LOGIN ======= -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">⚠️ Alarmes &amp; Bypass</div>
+    <div class="login-sub">Faça login para acessar o painel</div>
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input class="form-control" id="login-email" type="email" placeholder="seu@email.com" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Senha</label>
+      <input class="form-control" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ======= APP ======= -->
+<div id="app" style="display:none">
+  <div class="header">
+    <div>
+      <h1>Alarmes &amp; Bypass</h1>
+      <div class="subtitle" id="usuario-logado"></div>
+    </div>
+    <button class="logout-btn" onclick="sair()">Sair</button>
+  </div>
+
+  <div class="container">
+    <div class="card filtros">
+      <div>
+        <label>Período</label>
+        <select class="form-control" id="filtro-mes" onchange="aoTrocarMes()"></select>
+      </div>
+      <div>
+        <label>Buscar (tag ou descrição)</label>
+        <input class="form-control" id="filtro-texto" placeholder="ex: PSLL_1210003A" oninput="renderizar()">
+      </div>
+      <div>
+        <label>Operador</label>
+        <select class="form-control" id="filtro-operador" onchange="renderizar()">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div>
+        <label>Status</label>
+        <select class="form-control" id="filtro-status" onchange="renderizar()">
+          <option value="">Todos</option>
+          <option value="ATIVO (em aberto)">Ainda ativo</option>
+          <option value="Encerrado">Encerrado</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tipo="alarme" onclick="trocarTipo('alarme')">Alarmes</button>
+      <button class="tab-btn" data-tipo="bypass" onclick="trocarTipo('bypass')">Bypass</button>
+    </div>
+    <div class="subtabs">
+      <button class="subtab-btn active" data-visao="sessoes" onclick="trocarVisao('sessoes')">Sessões</button>
+      <button class="subtab-btn" data-visao="resumo" onclick="trocarVisao('resumo')">Resumo por tag</button>
+    </div>
+
+    <div class="card">
+      <div id="conteudo"><div class="loading">Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// TODO: substituir pelos valores reais em Firebase Console > Configurações
+// do projeto > Seus apps > Config do SDK. Esses valores NÃO são segredo —
+// a proteção de acesso está nas Firestore Security Rules (allowlist), não
+// no sigilo desta config.
+const firebaseConfig = {
+  apiKey: "SUBSTITUIR",
+  authDomain: "SUBSTITUIR.firebaseapp.com",
+  projectId: "SUBSTITUIR",
+  storageBucket: "SUBSTITUIR.appspot.com",
+  messagingSenderId: "SUBSTITUIR",
+  appId: "SUBSTITUIR",
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const estado = {
+  tipo: 'alarme',      // 'alarme' | 'bypass'
+  visao: 'sessoes',    // 'sessoes' | 'resumo'
+  mes: null,
+  sessoesAlarme: [],
+  sessoesBypass: [],
+  resumoAlarme: [],
+  resumoBypass: [],
+};
+
+// ---------- AUTENTICAÇÃO ----------
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('usuario-logado').textContent = user.email;
+    carregarPeriodos();
+  } else {
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
+
+function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-password').value;
+  const erroEl = document.getElementById('login-error');
+  erroEl.textContent = '';
+  if (!email || !senha) { erroEl.textContent = 'Preencha e-mail e senha'; return; }
+  auth.signInWithEmailAndPassword(email, senha).catch(() => {
+    erroEl.textContent = 'E-mail ou senha inválidos';
+  });
+}
+
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function sair() {
+  auth.signOut();
+}
+
+// ---------- CARREGAMENTO DE DADOS ----------
+
+async function carregarPeriodos() {
+  const doc = await db.collection('metadados').doc('periodos').get();
+  const meses = (doc.exists ? (doc.data().meses || []) : []).slice().sort().reverse();
+  const select = document.getElementById('filtro-mes');
+  select.innerHTML = meses.length
+    ? meses.map(m => `<option value="${m}">${m}</option>`).join('')
+    : '<option value="">Nenhum período disponível</option>';
+  if (meses.length) {
+    estado.mes = meses[0];
+    await carregarMes(estado.mes);
+  } else {
+    document.getElementById('conteudo').innerHTML = '<div class="empty-state">Nenhum dado enviado ainda.</div>';
+  }
+}
+
+function aoTrocarMes() {
+  const mes = document.getElementById('filtro-mes').value;
+  if (mes) carregarMes(mes);
+}
+
+async function carregarMes(mes) {
+  estado.mes = mes;
+  document.getElementById('conteudo').innerHTML = '<div class="loading">Carregando...</div>';
+  const [sa, sb, ra, rb] = await Promise.all([
+    db.collection('sessoes_alarme').where('mes_referencia', '==', mes).get(),
+    db.collection('sessoes_bypass').where('mes_referencia', '==', mes).get(),
+    db.collection('resumos_alarme').where('mes_referencia', '==', mes).get(),
+    db.collection('resumos_bypass').where('mes_referencia', '==', mes).get(),
+  ]);
+  estado.sessoesAlarme = sa.docs.map(d => d.data());
+  estado.sessoesBypass = sb.docs.map(d => d.data());
+  estado.resumoAlarme = ra.docs.map(d => d.data());
+  estado.resumoBypass = rb.docs.map(d => d.data());
+  popularFiltroOperadores();
+  renderizar();
+}
+
+function popularFiltroOperadores() {
+  const sessoes = estado.tipo === 'alarme' ? estado.sessoesAlarme : estado.sessoesBypass;
+  const operadores = new Set();
+  sessoes.forEach(s => { if (s.operador_abertura) operadores.add(s.operador_abertura); });
+  const select = document.getElementById('filtro-operador');
+  const atual = select.value;
+  select.innerHTML = '<option value="">Todos</option>' +
+    Array.from(operadores).sort().map(op => `<option value="${escapeHtml(op)}">${escapeHtml(op)}</option>`).join('');
+  select.value = operadores.has(atual) ? atual : '';
+}
+
+// ---------- NAVEGAÇÃO ----------
+
+function trocarTipo(tipo) {
+  estado.tipo = tipo;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
+  popularFiltroOperadores();
+  renderizar();
+}
+
+function trocarVisao(visao) {
+  estado.visao = visao;
+  document.querySelectorAll('.subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.visao === visao));
+  renderizar();
+}
+
+// ---------- FILTROS ----------
+
+function filtrar(lista) {
+  const texto = document.getElementById('filtro-texto').value.trim().toLowerCase();
+  const operador = document.getElementById('filtro-operador').value;
+  const status = document.getElementById('filtro-status').value;
+
+  return lista.filter(item => {
+    if (texto) {
+      const alvo = `${item.tag || ''} ${item.descricao || ''}`.toLowerCase();
+      if (!alvo.includes(texto)) return false;
+    }
+    if (operador) {
+      const bateOperador =
+        item.operador_abertura === operador ||
+        (item.operadores_resumo && item.operadores_resumo.includes(operador));
+      if (!bateOperador) return false;
+    }
+    if (status) {
+      if (item.status !== undefined) {
+        if (item.status !== status) return false;
+      } else if (item.qtd_ainda_ativo !== undefined) {
+        const ativo = item.qtd_ainda_ativo > 0;
+        if (status === 'ATIVO (em aberto)' && !ativo) return false;
+        if (status === 'Encerrado' && ativo) return false;
+      }
+    }
+    return true;
+  });
+}
+
+// ---------- RENDERIZAÇÃO ----------
+
+function formatarData(ts) {
+  if (!ts) return '—';
+  const data = ts.toDate ? ts.toDate() : new Date(ts);
+  return data.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function badgeStatus(status) {
+  const cls = status === 'ATIVO (em aberto)' ? 'badge-ativo' : 'badge-encerrado';
+  return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderizar() {
+  const alvo = document.getElementById('conteudo');
+  let lista, colunas, linhas;
+
+  if (estado.tipo === 'alarme' && estado.visao === 'sessoes') {
+    lista = filtrar(estado.sessoesAlarme);
+    colunas = ['Tag', 'Descrição', 'Início', 'Fim', 'Status', 'Operador Abertura', 'ACK em', 'Operador ACK', 'Duração'];
+    linhas = lista.map(s => [
+      escapeHtml(s.tag), escapeHtml(s.descricao), formatarData(s.inicio), formatarData(s.fim),
+      badgeStatus(s.status), escapeHtml(s.operador_abertura || '—'), formatarData(s.ack_em),
+      escapeHtml(s.operador_ack || '—'), escapeHtml(s.duracao_fmt),
+    ]);
+  } else if (estado.tipo === 'alarme' && estado.visao === 'resumo') {
+    lista = filtrar(estado.resumoAlarme);
+    colunas = ['Tag', 'Descrição', 'Atuações', 'Retornou Sozinho', 'Reconhecidas', 'Ainda Ativo', 'Tempo Total', 'Tempo Médio Reconhecimento'];
+    linhas = lista.map(r => [
+      escapeHtml(r.tag), escapeHtml(r.descricao), r.qtd_atuacoes, r.qtd_retornou_sozinho,
+      r.qtd_reconhecidas, r.qtd_ainda_ativo, escapeHtml(r.tempo_total_atuado_fmt), escapeHtml(r.tempo_medio_reconhecimento_fmt),
+    ]);
+  } else if (estado.tipo === 'bypass' && estado.visao === 'sessoes') {
+    lista = filtrar(estado.sessoesBypass);
+    colunas = ['Tag', 'Descrição', 'Início', 'Fim', 'Status', 'Operador Abertura', 'Operador Fechamento', 'Duração'];
+    linhas = lista.map(s => [
+      escapeHtml(s.tag), escapeHtml(s.descricao), formatarData(s.inicio), formatarData(s.fim),
+      badgeStatus(s.status), escapeHtml(s.operador_abertura || '—'), escapeHtml(s.operador_fechamento || '—'),
+      escapeHtml(s.duracao_fmt),
+    ]);
+  } else {
+    lista = filtrar(estado.resumoBypass);
+    colunas = ['Tag', 'Descrição', 'Ativações', 'Ainda Ativo', 'Tempo Total em Bypass', 'Operadores Responsáveis'];
+    linhas = lista.map(r => [
+      escapeHtml(r.tag), escapeHtml(r.descricao), r.qtd_ativacoes, r.qtd_ainda_ativo,
+      escapeHtml(r.tempo_total_bypass_fmt), escapeHtml(r.operadores_resumo || '—'),
+    ]);
+  }
+
+  if (!linhas.length) {
+    alvo.innerHTML = '<div class="empty-state">Nenhum registro encontrado para os filtros aplicados.</div>';
+    return;
+  }
+
+  const cabecalho = colunas.map(c => `<th>${c}</th>`).join('');
+  const corpo = linhas.map(l => `<tr>${l.map(v => `<td>${v}</td>`).join('')}</tr>`).join('');
+
+  alvo.innerHTML = `
+    <div class="resultado-info">${linhas.length} registro(s)</div>
+    <div class="tabela-wrap">
+      <table><thead><tr>${cabecalho}</tr></thead><tbody>${corpo}</tbody></table>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
