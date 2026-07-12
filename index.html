@@ -515,6 +515,27 @@ const ESQUELETO_DASHBOARD = `
       A duração dos bypasses "ainda ativos" foi calculada no momento do último envio de dados
       (não é atualizada em tempo real).
     </div>
+
+    <div class="chart-card">
+      <div class="section-title">📅 Período analisado (considera o mês em que o bypass foi ativado)</div>
+      <div class="subtabs" id="bypass-periodo-filtros">
+        <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoBypass('tudo')">Tudo</button>
+        <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoBypass('mes')">Este mês</button>
+        <button class="subtab-btn" data-filtro="personalizado" onclick="trocarPeriodoBypass('personalizado')">Personalizado</button>
+      </div>
+      <div id="bypass-periodo-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px">
+        <div>
+          <label class="form-label">De</label>
+          <input class="form-control" type="date" id="bypass-periodo-de">
+        </div>
+        <div>
+          <label class="form-label">Até</label>
+          <input class="form-control" type="date" id="bypass-periodo-ate">
+        </div>
+        <button class="btn btn-primary" onclick="atualizarBypassFiltrado()">Aplicar</button>
+      </div>
+    </div>
+
     <div class="kpi-grid" id="kpi-grid-bypass"></div>
     <div class="chart-card">
       <div class="section-title">🚨 Bypasses com mais de 120 dias ativos <span class="badge badge-ativo" id="contagem-bypass-criticos"></span></div>
@@ -525,40 +546,22 @@ const ESQUELETO_DASHBOARD = `
     <div class="chart-card">
       <div class="section-title">📝 Justificativas de Bypass</div>
       <div class="nota-dashboard">
-        Registre por que um bypass segue ativo. Não dá pra editar/apagar depois
-        de salvo - forma um histórico de acompanhamento (a tendência é revisar
-        mensalmente).
+        Uma tag só tem UMA justificativa - se já existir, ela é carregada abaixo
+        para edição em vez de criar outra.
       </div>
       <div class="form-group">
         <label class="form-label">Tag do bypass</label>
-        <input class="form-control" id="justificativa-tag" placeholder="ex: PSLL_1210003A" list="lista-tags-bypass">
+        <input class="form-control" id="justificativa-tag" placeholder="ex: PSLL_1210003A" list="lista-tags-bypass" onchange="carregarJustificativaDaTag()">
         <datalist id="lista-tags-bypass"></datalist>
       </div>
       <div class="form-group">
         <label class="form-label">Justificativa</label>
         <textarea class="form-control" id="justificativa-texto" rows="3" placeholder="Motivo do bypass continuar ativo..."></textarea>
       </div>
-      <button class="btn btn-primary" onclick="adicionarJustificativa()">Adicionar justificativa</button>
+      <button class="btn btn-primary" id="justificativa-btn-salvar" onclick="salvarJustificativa()">Salvar justificativa</button>
       <div class="login-error" id="justificativa-erro"></div>
 
-      <div class="subtabs" id="justificativa-filtros" style="margin-top:20px">
-        <button class="subtab-btn active" data-filtro="tudo" onclick="trocarFiltroJustificativas('tudo')">Tudo</button>
-        <button class="subtab-btn" data-filtro="mes" onclick="trocarFiltroJustificativas('mes')">Este mês</button>
-        <button class="subtab-btn" data-filtro="personalizado" onclick="trocarFiltroJustificativas('personalizado')">Personalizado</button>
-      </div>
-      <div id="justificativa-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px">
-        <div>
-          <label class="form-label">De</label>
-          <input class="form-control" type="date" id="justificativa-data-de">
-        </div>
-        <div>
-          <label class="form-label">Até</label>
-          <input class="form-control" type="date" id="justificativa-data-ate">
-        </div>
-        <button class="btn btn-primary" onclick="renderizarJustificativas()">Aplicar</button>
-      </div>
-
-      <div id="lista-justificativas"><div class="loading">Carregando...</div></div>
+      <div id="lista-justificativas" style="margin-top:16px"><div class="loading">Carregando...</div></div>
     </div>
 
     <div class="charts-grid">
@@ -579,7 +582,43 @@ const ESQUELETO_DASHBOARD = `
 `;
 
 const graficos = {};
-const estadoDashboard = { tipo: 'alarme', desenhados: { alarme: false, bypass: false } };
+const estadoDashboard = {
+  tipo: 'alarme',
+  desenhados: { alarme: false, bypass: false },
+  periodoBypass: { tipo: 'tudo' },
+};
+
+function mesNoPeriodo(mesReferencia) {
+  const tipo = estadoDashboard.periodoBypass.tipo;
+  if (tipo === 'tudo') return true;
+  if (tipo === 'mes') {
+    const agora = new Date();
+    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    return mesReferencia === mesAtual;
+  }
+  const de = document.getElementById('bypass-periodo-de').value;
+  const ate = document.getElementById('bypass-periodo-ate').value;
+  if (de && mesReferencia < de.slice(0, 7)) return false;
+  if (ate && mesReferencia > ate.slice(0, 7)) return false;
+  return true;
+}
+
+function trocarPeriodoBypass(tipo) {
+  estadoDashboard.periodoBypass.tipo = tipo;
+  document.querySelectorAll('#bypass-periodo-filtros .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === tipo));
+  document.getElementById('bypass-periodo-datas').style.display = tipo === 'personalizado' ? 'flex' : 'none';
+  atualizarBypassFiltrado();
+}
+
+function atualizarBypassFiltrado() {
+  renderizarKPIsBypass();
+  renderizarBypassCriticos();
+  renderizarAlertaBypass();
+  if (graficos.bypassMes) { graficos.bypassMes.destroy(); delete graficos.bypassMes; }
+  if (graficos.topOperadores) { graficos.topOperadores.destroy(); delete graficos.topOperadores; }
+  desenharGraficosBypass();
+  estadoDashboard.desenhados.bypass = true;
+}
 
 function trocarDashboardTipo(tipo) {
   estadoDashboard.tipo = tipo;
@@ -621,9 +660,9 @@ function agruparPorTag(lista, campoQtd, campoTempo) {
   return Object.values(mapa);
 }
 
-function agruparOperadoresBypass() {
+function agruparOperadoresBypass(lista) {
   const mapa = {};
-  estado.todosResumoBypass.forEach(r => {
+  lista.forEach(r => {
     const ops = r.operadores || {};
     Object.keys(ops).forEach(op => { mapa[op] = (mapa[op] || 0) + ops[op]; });
   });
@@ -652,6 +691,7 @@ async function carregarDashboard() {
   alvo.innerHTML = ESQUELETO_DASHBOARD;
   estadoDashboard.tipo = 'alarme';
   estadoDashboard.desenhados = { alarme: false, bypass: false };
+  estadoDashboard.periodoBypass = { tipo: 'tudo' };
   renderizarKPIsAlarme();
   renderizarKPIsBypass();
   renderizarAlertaAlarme();
@@ -695,14 +735,16 @@ const LIMIAR_ATENCAO_DIAS = 120;
 const LIMIAR_CRITICO_DIAS = 180;
 
 function renderizarKPIsBypass() {
-  const totalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.qtd_ativacoes, 0);
-  const criticos = estado.ativosBypass.filter(s => s.duracao_s > LIMIAR_ATENCAO_DIAS * SEGUNDOS_POR_DIA);
-  const topOperadores = agruparOperadoresBypass();
+  const resumoFiltrado = estado.todosResumoBypass.filter(r => mesNoPeriodo(r.mes_referencia));
+  const ativosFiltrado = estado.ativosBypass.filter(s => mesNoPeriodo(s.mes_referencia));
+  const totalBypass = resumoFiltrado.reduce((s, r) => s + r.qtd_ativacoes, 0);
+  const criticos = ativosFiltrado.filter(s => s.duracao_s > LIMIAR_ATENCAO_DIAS * SEGUNDOS_POR_DIA);
+  const topOperadores = agruparOperadoresBypass(resumoFiltrado);
   const operadorTop = topOperadores.length ? `${topOperadores[0][0]} (${topOperadores[0][1]}x)` : '—';
 
   const kpis = [
     { label: 'Bypass (total)', valor: totalBypass.toLocaleString('pt-BR') },
-    { label: 'Bypass ativos agora', valor: estado.ativosBypass.length, destaque: estado.ativosBypass.length ? 'yellow' : 'green' },
+    { label: 'Bypass ativos agora', valor: ativosFiltrado.length, destaque: ativosFiltrado.length ? 'yellow' : 'green' },
     { label: 'Bypass > 120 dias ativos', valor: criticos.length, destaque: criticos.length ? 'red' : 'green' },
     { label: 'Operador mais frequente', valor: operadorTop },
   ];
@@ -723,6 +765,7 @@ function nivelCritico(dias) {
 
 function renderizarBypassCriticos() {
   const criticos = estado.ativosBypass
+    .filter(s => mesNoPeriodo(s.mes_referencia))
     .filter(s => s.duracao_s > LIMIAR_ATENCAO_DIAS * SEGUNDOS_POR_DIA)
     .slice()
     .sort((a, b) => b.duracao_s - a.duracao_s);
@@ -759,96 +802,83 @@ function renderizarBypassCriticos() {
   }).join('');
 }
 
-// ---------- JUSTIFICATIVAS DE BYPASS ----------
+// ---------- JUSTIFICATIVAS DE BYPASS (uma por tag, editavel) ----------
 
-let todasJustificativas = [];
-let filtroJustificativas = 'tudo';
+let todasJustificativas = {}; // tag -> {tag, descricao, texto, autor_email, criado_em, atualizado_em}
 
 function preencherJustificativa(tag) {
   trocarDashboardTipo('bypass');
   document.getElementById('justificativa-tag').value = tag;
+  carregarJustificativaDaTag();
   const campo = document.getElementById('justificativa-texto');
-  campo.focus();
   campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  campo.focus();
 }
 
-async function adicionarJustificativa() {
+function carregarJustificativaDaTag() {
+  const tag = document.getElementById('justificativa-tag').value.trim();
+  const existente = todasJustificativas[tag];
+  document.getElementById('justificativa-texto').value = existente ? existente.texto : '';
+  document.getElementById('justificativa-btn-salvar').textContent = existente ? 'Salvar edição' : 'Salvar justificativa';
+  document.getElementById('justificativa-erro').textContent = '';
+}
+
+async function salvarJustificativa() {
   const tag = document.getElementById('justificativa-tag').value.trim();
   const texto = document.getElementById('justificativa-texto').value.trim();
   const erroEl = document.getElementById('justificativa-erro');
   erroEl.textContent = '';
   if (!tag || !texto) { erroEl.textContent = 'Preencha a tag e a justificativa.'; return; }
 
-  const agora = new Date();
-  const mesReferencia = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+  const existente = todasJustificativas[tag];
   const bypassAtivo = estado.ativosBypass.find(s => s.tag === tag);
 
   try {
-    await db.collection('justificativas_bypass').add({
+    await db.collection('justificativas_bypass').doc(tag).set({
       tag,
-      descricao: bypassAtivo ? bypassAtivo.descricao : '',
+      descricao: bypassAtivo ? bypassAtivo.descricao : (existente ? existente.descricao : ''),
       texto,
       autor_email: auth.currentUser.email,
-      mes_referencia: mesReferencia,
-      criado_em: firebase.firestore.FieldValue.serverTimestamp(),
+      criado_em: existente ? existente.criado_em : firebase.firestore.FieldValue.serverTimestamp(),
+      atualizado_em: firebase.firestore.FieldValue.serverTimestamp(),
     });
-    document.getElementById('justificativa-texto').value = '';
     await carregarJustificativas();
+    carregarJustificativaDaTag();
   } catch (e) {
     erroEl.textContent = 'Não foi possível salvar. Tente novamente.';
   }
 }
 
-function trocarFiltroJustificativas(filtro) {
-  filtroJustificativas = filtro;
-  document.querySelectorAll('#justificativa-filtros .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === filtro));
-  document.getElementById('justificativa-datas').style.display = filtro === 'personalizado' ? 'flex' : 'none';
-  renderizarJustificativas();
-}
-
 async function carregarJustificativas() {
-  const snap = await db.collection('justificativas_bypass').orderBy('criado_em', 'desc').get();
-  todasJustificativas = snap.docs.map(d => d.data());
+  const snap = await db.collection('justificativas_bypass').get();
+  todasJustificativas = {};
+  snap.docs.forEach(d => { todasJustificativas[d.id] = d.data(); });
 
   const tags = new Set(estado.ativosBypass.map(s => s.tag));
+  Object.keys(todasJustificativas).forEach(t => tags.add(t));
   document.getElementById('lista-tags-bypass').innerHTML =
     Array.from(tags).sort().map(t => `<option value="${escapeHtml(t)}"></option>`).join('');
 
-  renderizarJustificativas();
+  renderizarListaJustificativas();
 }
 
-function renderizarJustificativas() {
+function renderizarListaJustificativas() {
   const alvo = document.getElementById('lista-justificativas');
-  let lista = todasJustificativas;
+  const entradas = Object.values(todasJustificativas).sort((a, b) => (a.tag || '').localeCompare(b.tag || ''));
 
-  if (filtroJustificativas === 'mes') {
-    const agora = new Date();
-    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
-    lista = lista.filter(j => j.mes_referencia === mesAtual);
-  } else if (filtroJustificativas === 'personalizado') {
-    const de = document.getElementById('justificativa-data-de').value;
-    const ate = document.getElementById('justificativa-data-ate').value;
-    lista = lista.filter(j => {
-      if (!j.criado_em) return false;
-      const data = j.criado_em.toDate ? j.criado_em.toDate() : new Date(j.criado_em);
-      if (de && data < new Date(de + 'T00:00:00')) return false;
-      if (ate && data > new Date(ate + 'T23:59:59')) return false;
-      return true;
-    });
-  }
-
-  if (!lista.length) {
-    alvo.innerHTML = '<div class="empty-state">Nenhuma justificativa registrada nesse período.</div>';
+  if (!entradas.length) {
+    alvo.innerHTML = '<div class="empty-state">Nenhuma justificativa cadastrada ainda.</div>';
     return;
   }
 
-  alvo.innerHTML = lista.map(j => `
+  alvo.innerHTML = entradas.map(j => `
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:6px">
         <div class="alerta-tag">${escapeHtml(j.tag)}</div>
-        <div class="alerta-desc">${formatarData(j.criado_em)} · ${escapeHtml(j.autor_email || '—')}</div>
+        <div class="alerta-desc">atualizado em ${formatarData(j.atualizado_em)} · ${escapeHtml(j.autor_email || '—')}</div>
       </div>
-      <div style="font-size:0.82rem">${escapeHtml(j.texto)}</div>
+      <div style="font-size:0.82rem; margin-bottom:8px">${escapeHtml(j.texto)}</div>
+      <button class="btn" style="padding:4px 10px; font-size:0.72rem; background:var(--accent2); color:#0f0f1a" onclick="preencherJustificativa('${escapeHtml(j.tag)}')">✏️ Editar</button>
     </div>
   `).join('');
 }
@@ -873,10 +903,11 @@ function renderizarAlertaAlarme() {
 }
 
 function renderizarAlertaBypass() {
-  document.getElementById('contagem-bypass-ativos').textContent = estado.ativosBypass.length;
-  document.getElementById('lista-bypass-ativos').innerHTML = estado.ativosBypass.length
-    ? estado.ativosBypass.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, 'bypass')).join('')
-    : '<div class="empty-state">Nenhum bypass ativo no momento.</div>';
+  const ativosFiltrado = estado.ativosBypass.filter(s => mesNoPeriodo(s.mes_referencia));
+  document.getElementById('contagem-bypass-ativos').textContent = ativosFiltrado.length;
+  document.getElementById('lista-bypass-ativos').innerHTML = ativosFiltrado.length
+    ? ativosFiltrado.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, 'bypass')).join('')
+    : '<div class="empty-state">Nenhum bypass ativo nesse período.</div>';
 }
 
 function opcoesBase(extra) {
@@ -932,14 +963,15 @@ function desenharGraficosAlarme() {
 }
 
 function desenharGraficosBypass() {
-  const porMesBypass = agruparPorMes(estado.todosResumoBypass, 'qtd_ativacoes');
+  const resumoFiltrado = estado.todosResumoBypass.filter(r => mesNoPeriodo(r.mes_referencia));
+  const porMesBypass = agruparPorMes(resumoFiltrado, 'qtd_ativacoes');
   graficos.bypassMes = new Chart(document.getElementById('grafico-bypass-mes'), {
     type: 'bar',
     data: { labels: porMesBypass.map(m => m.mes), datasets: [{ data: porMesBypass.map(m => m.valor), backgroundColor: '#fdcb6e', borderRadius: 6 }] },
     options: opcoesBase(),
   });
 
-  const topOperadores = agruparOperadoresBypass();
+  const topOperadores = agruparOperadoresBypass(resumoFiltrado);
   graficos.topOperadores = new Chart(document.getElementById('grafico-top-operadores'), {
     type: 'bar',
     data: { labels: topOperadores.map(o => o[0]), datasets: [{ data: topOperadores.map(o => o[1]), backgroundColor: '#4ea8de', borderRadius: 6 }] },
