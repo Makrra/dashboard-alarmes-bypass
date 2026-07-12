@@ -488,23 +488,6 @@ const ESQUELETO_DASHBOARD = `
       (não é atualizada em tempo real).
     </div>
 
-    <div class="charts-grid">
-      <div class="chart-card">
-        <h3>📍 Alarmes por plataforma (visão geral, todos os períodos)</h3>
-        <canvas id="grafico-alarmes-plataforma"></canvas>
-      </div>
-      <div class="chart-card">
-        <div class="section-title">🔎 Filtrar por plataforma</div>
-        <div class="nota-dashboard" style="margin-bottom:10px">
-          Detectada a partir da descrição do alarme. O que não cita plataforma
-          nenhuma cai em "Não identificado".
-        </div>
-        <select class="form-control" id="alarme-plataforma-filtro" onchange="trocarPlataformaAlarme()">
-          <option value="tudo">Todas as plataformas</option>
-        </select>
-      </div>
-    </div>
-
     <div class="kpi-grid" id="kpi-grid-alarme"></div>
     <div class="charts-grid">
       <div class="chart-card">
@@ -525,6 +508,42 @@ const ESQUELETO_DASHBOARD = `
     <div class="chart-card">
       <div class="section-title">🔔 Alarmes ainda ativos <span class="badge badge-ativo" id="contagem-alarmes-ativos"></span></div>
       <div class="alerta-lista" id="lista-alarmes-ativos"></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="section-title">🔎 Filtros</div>
+      <div class="filtros">
+        <div>
+          <label>Plataforma</label>
+          <select class="form-control" id="alarme-plataforma-filtro" onchange="trocarPlataformaAlarme()">
+            <option value="tudo">Todas as plataformas</option>
+          </select>
+        </div>
+        <div>
+          <label>Categoria</label>
+          <select class="form-control" id="alarme-categoria-filtro" onchange="trocarCategoriaAlarme()">
+            <option value="tudo">Todas as categorias</option>
+            <option value="Geral">Geral</option>
+            <option value="Detector de Gás">Detector de Gás</option>
+            <option value="ESD">ESD (Emergency Shutdown)</option>
+          </select>
+        </div>
+      </div>
+      <div class="nota-dashboard" style="margin-top:10px">
+        Plataforma e categoria são detectadas a partir da tag/descrição do alarme
+        (não existem no dado bruto do SCADA). O que não bate com nenhum padrão
+        conhecido cai em "Não identificado" (plataforma) ou "Geral" (categoria).
+      </div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>📍 Alarmes por plataforma (visão geral, todos os períodos)</h3>
+        <canvas id="grafico-alarmes-plataforma"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>🧪 Alarmes por categoria (visão geral, todos os períodos)</h3>
+        <canvas id="grafico-alarmes-categoria"></canvas>
+      </div>
     </div>
   </div>
 
@@ -605,6 +624,7 @@ const estadoDashboard = {
   desenhados: { alarme: false, bypass: false },
   periodoBypass: { tipo: 'tudo' },
   plataformaAlarme: 'tudo',
+  categoriaAlarme: 'tudo',
 };
 
 // Deteccao de plataforma via texto da descricao do alarme (ex: "PAL - PPE-1A -
@@ -617,8 +637,26 @@ function identificarPlataforma(descricao) {
   return `${m[1].toUpperCase()}-${m[2]}${m[3].toUpperCase()}`;
 }
 
+// Deteccao de categoria via tipo de instrumento na tag (GAH/GAHH/GAL/GALL/GAFF
+// = codigo ISA padrao pra alarme de detector de gas) ou mencao a "ESD" na
+// tag/descricao (inclui trips causados por um ESD, nao so o alarme do proprio
+// ESD). O que nao bate com nenhum dos dois cai em "Geral".
+function identificarCategoria(tag, descricao) {
+  if (/_(GAH|GAHH|GAL|GALL|GAFF)_/i.test(tag)) return 'Detector de Gás';
+  if (/ESD/i.test(`${tag} ${descricao || ''}`)) return 'ESD';
+  return 'Geral';
+}
+
 function alarmeNaPlataforma(item) {
   return estadoDashboard.plataformaAlarme === 'tudo' || item.plataforma === estadoDashboard.plataformaAlarme;
+}
+
+function alarmeNaCategoria(item) {
+  return estadoDashboard.categoriaAlarme === 'tudo' || item.categoria === estadoDashboard.categoriaAlarme;
+}
+
+function passaFiltrosAlarme(item) {
+  return alarmeNaPlataforma(item) && alarmeNaCategoria(item);
 }
 
 function popularFiltroPlataforma() {
@@ -635,6 +673,15 @@ function popularFiltroPlataforma() {
 
 function trocarPlataformaAlarme() {
   estadoDashboard.plataformaAlarme = document.getElementById('alarme-plataforma-filtro').value;
+  atualizarAlarmeFiltrado();
+}
+
+function trocarCategoriaAlarme() {
+  estadoDashboard.categoriaAlarme = document.getElementById('alarme-categoria-filtro').value;
+  atualizarAlarmeFiltrado();
+}
+
+function atualizarAlarmeFiltrado() {
   renderizarKPIsAlarme();
   renderizarAlertaAlarme();
   ['alarmesMes', 'statusAlarme', 'topAlarmes'].forEach(id => {
@@ -649,12 +696,30 @@ function agruparPorPlataforma(lista) {
   return Object.entries(mapa).sort((a, b) => b[1] - a[1]);
 }
 
+function agruparPorCategoria(lista) {
+  const mapa = {};
+  lista.forEach(r => { mapa[r.categoria] = (mapa[r.categoria] || 0) + r.qtd_atuacoes; });
+  return Object.entries(mapa).sort((a, b) => b[1] - a[1]);
+}
+
 function desenharGraficoPlataformasAlarme() {
   const dados = agruparPorPlataforma(estado.todosResumoAlarme);
   graficos.alarmesPlataforma = new Chart(document.getElementById('grafico-alarmes-plataforma'), {
     type: 'bar',
     data: { labels: dados.map(d => d[0]), datasets: [{ data: dados.map(d => d[1]), backgroundColor: '#4ea8de', borderRadius: 6 }] },
     options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
+  });
+}
+
+function desenharGraficoCategoriasAlarme() {
+  const dados = agruparPorCategoria(estado.todosResumoAlarme);
+  graficos.alarmesCategoria = new Chart(document.getElementById('grafico-alarmes-categoria'), {
+    type: 'doughnut',
+    data: {
+      labels: dados.map(d => d[0]),
+      datasets: [{ data: dados.map(d => d[1]), backgroundColor: ['#4ea8de', '#fdcb6e', '#ff6b6b', '#00b894'] }],
+    },
+    options: opcoesBase({ plugins: { legend: { display: true, position: 'bottom', labels: { color: '#e2e2e2' } } }, scales: {} }),
   });
 }
 
@@ -699,6 +764,7 @@ function trocarDashboardTipo(tipo) {
     estadoDashboard.desenhados[tipo] = true;
     if (tipo === 'alarme') {
       desenharGraficoPlataformasAlarme();
+      desenharGraficoCategoriasAlarme();
       desenharGraficosAlarme();
     } else {
       desenharGraficosBypass();
@@ -758,8 +824,14 @@ async function carregarDashboard() {
   estado.ativosAlarme = aa.docs.map(d => d.data());
   estado.ativosBypass = ab.docs.map(d => d.data());
 
-  estado.todosResumoAlarme.forEach(r => { r.plataforma = identificarPlataforma(r.descricao); });
-  estado.ativosAlarme.forEach(s => { s.plataforma = identificarPlataforma(s.descricao); });
+  estado.todosResumoAlarme.forEach(r => {
+    r.plataforma = identificarPlataforma(r.descricao);
+    r.categoria = identificarCategoria(r.tag, r.descricao);
+  });
+  estado.ativosAlarme.forEach(s => {
+    s.plataforma = identificarPlataforma(s.descricao);
+    s.categoria = identificarCategoria(s.tag, s.descricao);
+  });
 
   if (!estado.todosResumoAlarme.length && !estado.todosResumoBypass.length) {
     alvo.innerHTML = '<div class="empty-state">Nenhum dado enviado ainda.</div>';
@@ -772,6 +844,8 @@ async function carregarDashboard() {
   estadoDashboard.desenhados = { alarme: false, bypass: false };
   estadoDashboard.periodoBypass = { tipo: 'tudo' };
   estadoDashboard.plataformaAlarme = 'tudo';
+  estadoDashboard.categoriaAlarme = 'tudo';
+  document.getElementById('alarme-categoria-filtro').value = 'tudo';
   popularFiltroPlataforma();
   renderizarKPIsAlarme();
   renderizarKPIsBypass();
@@ -779,13 +853,14 @@ async function carregarDashboard() {
   renderizarAlertaBypass();
   renderizarBypassCriticos();
   desenharGraficoPlataformasAlarme();
+  desenharGraficoCategoriasAlarme();
   desenharGraficosAlarme();
   estadoDashboard.desenhados.alarme = true;
 }
 
 function renderizarKPIsAlarme() {
-  const resumoFiltrado = estado.todosResumoAlarme.filter(alarmeNaPlataforma);
-  const ativosFiltrado = estado.ativosAlarme.filter(alarmeNaPlataforma);
+  const resumoFiltrado = estado.todosResumoAlarme.filter(passaFiltrosAlarme);
+  const ativosFiltrado = estado.ativosAlarme.filter(passaFiltrosAlarme);
 
   const totalAlarmes = resumoFiltrado.reduce((s, r) => s + r.qtd_atuacoes, 0);
   const totalReconhecidas = resumoFiltrado.reduce((s, r) => s + r.qtd_reconhecidas, 0);
@@ -980,7 +1055,7 @@ function montarItemAlerta(s, classe) {
 }
 
 function renderizarAlertaAlarme() {
-  const ativosFiltrado = estado.ativosAlarme.filter(alarmeNaPlataforma);
+  const ativosFiltrado = estado.ativosAlarme.filter(passaFiltrosAlarme);
   document.getElementById('contagem-alarmes-ativos').textContent = ativosFiltrado.length;
   document.getElementById('lista-alarmes-ativos').innerHTML = ativosFiltrado.length
     ? ativosFiltrado.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, '')).join('')
@@ -1007,8 +1082,8 @@ function opcoesBase(extra) {
 }
 
 function desenharGraficosAlarme() {
-  const resumoFiltrado = estado.todosResumoAlarme.filter(alarmeNaPlataforma);
-  const ativosFiltrado = estado.ativosAlarme.filter(alarmeNaPlataforma);
+  const resumoFiltrado = estado.todosResumoAlarme.filter(passaFiltrosAlarme);
+  const ativosFiltrado = estado.ativosAlarme.filter(passaFiltrosAlarme);
 
   const porMesAlarme = agruparPorMes(resumoFiltrado, 'qtd_atuacoes');
   graficos.alarmesMes = new Chart(document.getElementById('grafico-alarmes-mes'), {
