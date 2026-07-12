@@ -13,6 +13,16 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/usuarios_permitidos/$(request.auth.uid));
     }
 
+    // Admin fixo (uid do Neydson, neydson@petrobras.com.br) - so essa conta
+    // consegue ler solicitacoes de outros usuarios e gravar em
+    // usuarios_permitidos direto pelo navegador (tela de aprovacao em
+    // index.html). Qualquer outro uid, mesmo autenticado, cai nas regras
+    // normais abaixo (bloqueado).
+    function souAdmin() {
+      return request.auth != null &&
+        request.auth.uid == "pfn8CD9zRSP0LpC0Tvv11G4lRmn1";
+    }
+
     match /sessoes_alarme/{docId} {
       allow read: if estaAutorizado();
       allow write: if false;
@@ -34,22 +44,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Nunca legivel/gravavel diretamente pelo client - so usada
-    // internamente por estaAutorizado() via exists(), que tem acesso
-    // elevado dentro da propria regra.
+    // So o admin pode ler a allowlist inteira (tela de aprovacao) ou
+    // escrever nela (aprovar = criar entrada). Nenhum outro client, mesmo
+    // autenticado e ja aprovado, consegue tocar aqui.
     match /usuarios_permitidos/{uid} {
-      allow read, write: if false;
+      allow read, write: if souAdmin();
     }
 
     // Autocadastro: qualquer usuario autenticado pode CRIAR a propria
     // solicitacao (uid tem que bater com o dele mesmo) e ler o proprio
-    // status. Nunca pode alterar/apagar depois de criada (evita se
-    // autoaprovar) - so o Admin SDK (script Python do administrador) move
-    // a solicitacao para usuarios_permitidos ou apaga.
+    // status - usado pela tela de "aguardando aprovacao". O admin pode ler
+    // TODAS as solicitacoes (tela de aprovacao) e apagar (aprovar move pra
+    // usuarios_permitidos e apaga daqui; rejeitar so apaga). Ninguem altera
+    // depois de criada (evita se autoaprovar).
     match /solicitacoes_cadastro/{uid} {
       allow create: if request.auth != null && request.auth.uid == uid;
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow update, delete: if false;
+      allow read: if (request.auth != null && request.auth.uid == uid) || souAdmin();
+      allow delete: if souAdmin();
+      allow update: if false;
     }
 
     // Default-deny explicito para qualquer colecao futura nao prevista aqui.

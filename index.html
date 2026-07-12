@@ -155,6 +155,15 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
   </div>
 </div>
 
+<!-- ======= APROVAÇÕES (só admin) ======= -->
+<div class="login-screen" id="aprovacoes-screen" style="display:none">
+  <div class="login-card" style="max-width:520px; text-align:left">
+    <div class="login-logo" style="text-align:center">🔑 Aprovações pendentes</div>
+    <div id="lista-aprovacoes"><div class="loading">Carregando...</div></div>
+    <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="fecharAprovacoes()">Voltar ao painel</button>
+  </div>
+</div>
+
 <!-- ======= APP ======= -->
 <div id="app" style="display:none">
   <div class="header">
@@ -162,7 +171,10 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
       <h1>Alarmes &amp; Bypass</h1>
       <div class="subtitle" id="usuario-logado"></div>
     </div>
-    <button class="logout-btn" onclick="sair()">Sair</button>
+    <div style="display:flex; gap:8px">
+      <button class="logout-btn" id="btn-aprovacoes" style="display:none" onclick="abrirAprovacoes()">Aprovações</button>
+      <button class="logout-btn" onclick="sair()">Sair</button>
+    </div>
   </div>
 
   <div class="container">
@@ -234,6 +246,8 @@ const estado = {
 
 // ---------- AUTENTICAÇÃO ----------
 
+const ADMIN_UID = "pfn8CD9zRSP0LpC0Tvv11G4lRmn1"; // neydson@petrobras.com.br
+
 let modoCadastro = false;
 
 function mostrarTela(id) {
@@ -258,12 +272,64 @@ auth.onAuthStateChanged(async user => {
   }
   if (await estaAprovado()) {
     document.getElementById('usuario-logado').textContent = user.email;
+    document.getElementById('btn-aprovacoes').style.display = user.uid === ADMIN_UID ? 'inline-block' : 'none';
     mostrarTela('app');
     carregarPeriodos();
   } else {
     mostrarTela('pending-screen');
   }
 });
+
+// ---------- APROVAÇÕES (admin) ----------
+
+function abrirAprovacoes() {
+  document.getElementById('aprovacoes-screen').style.display = 'flex';
+  carregarAprovacoes();
+}
+
+function fecharAprovacoes() {
+  document.getElementById('aprovacoes-screen').style.display = 'none';
+}
+
+async function carregarAprovacoes() {
+  const alvo = document.getElementById('lista-aprovacoes');
+  alvo.innerHTML = '<div class="loading">Carregando...</div>';
+  const snap = await db.collection('solicitacoes_cadastro').get();
+  if (snap.empty) {
+    alvo.innerHTML = '<div class="empty-state">Nenhuma solicitação pendente.</div>';
+    return;
+  }
+  alvo.innerHTML = snap.docs.map(doc => {
+    const d = doc.data();
+    const criado = formatarData(d.criado_em);
+    return `
+      <div class="card" style="margin-bottom:10px">
+        <div style="font-weight:600">${escapeHtml(d.nome || '—')}</div>
+        <div style="font-size:0.8rem; color:var(--muted); margin-bottom:10px">${escapeHtml(d.email || '—')} · solicitado em ${criado}</div>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-primary" style="flex:1; background:var(--green)" onclick="aprovarUsuario('${doc.id}')">Aprovar</button>
+          <button class="btn btn-primary" style="flex:1; background:var(--red)" onclick="rejeitarUsuario('${doc.id}')">Rejeitar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function aprovarUsuario(uid) {
+  const doc = await db.collection('solicitacoes_cadastro').doc(uid).get();
+  const d = doc.data() || {};
+  await db.collection('usuarios_permitidos').doc(uid).set({ email: d.email || '', nome: d.nome || '' });
+  await db.collection('solicitacoes_cadastro').doc(uid).delete();
+  carregarAprovacoes();
+}
+
+async function rejeitarUsuario(uid) {
+  // So remove a solicitacao (bloqueia o acesso permanentemente). A conta de
+  // login em si so pode ser apagada pelo Admin SDK - use
+  // "gerenciar_usuarios_firebase.py rejeitar email" se quiser limpar de vez.
+  await db.collection('solicitacoes_cadastro').doc(uid).delete();
+  carregarAprovacoes();
+}
 
 function alternarModo() {
   modoCadastro = !modoCadastro;
