@@ -184,17 +184,15 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 </div>
 
 <script>
-// TODO: substituir pelos valores reais em Firebase Console > Configurações
-// do projeto > Seus apps > Config do SDK. Esses valores NÃO são segredo —
-// a proteção de acesso está nas Firestore Security Rules (allowlist), não
-// no sigilo desta config.
+// Config publica do projeto Firebase - nao e segredo, a protecao de acesso
+// esta nas Firestore Security Rules (allowlist), nao no sigilo desta config.
 const firebaseConfig = {
-  apiKey: "SUBSTITUIR",
-  authDomain: "SUBSTITUIR.firebaseapp.com",
-  projectId: "SUBSTITUIR",
-  storageBucket: "SUBSTITUIR.appspot.com",
-  messagingSenderId: "SUBSTITUIR",
-  appId: "SUBSTITUIR",
+  apiKey: "AIzaSyAFgkv4nqbAPYJPP3aZTrIRm3B81stHykU",
+  authDomain: "bd-alarmes-e-by-passes.firebaseapp.com",
+  projectId: "bd-alarmes-e-by-passes",
+  storageBucket: "bd-alarmes-e-by-passes.firebasestorage.app",
+  messagingSenderId: "230240463920",
+  appId: "1:230240463920:web:128ff75856deb6e60ad1f5",
 };
 
 firebase.initializeApp(firebaseConfig);
