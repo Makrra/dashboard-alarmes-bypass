@@ -44,6 +44,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Historico de justificativas de bypass: qualquer usuario aprovado pode
+    // ler e ADICIONAR (append-only, mesmo padrao do schema.sql do projeto
+    // deposito-agua-gas). Nunca pode editar/apagar um registro ja criado -
+    // vira um log de acompanhamento confiavel.
+    match /justificativas_bypass/{docId} {
+      allow read: if estaAutorizado();
+      allow create: if estaAutorizado();
+      allow update, delete: if false;
+    }
+
     // So o admin pode ler a allowlist inteira (tela de aprovacao) ou
     // escrever nela (aprovar = criar entrada). Nenhum outro client, mesmo
     // autenticado e ja aprovado, consegue tocar aqui.

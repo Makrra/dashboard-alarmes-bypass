@@ -521,6 +521,46 @@ const ESQUELETO_DASHBOARD = `
       <div class="nota-dashboard" style="margin-bottom:10px">Limite de atenção: 180 dias ativo. Ordenado do mais próximo do limite para o mais distante.</div>
       <div class="alerta-lista" id="lista-bypass-criticos"></div>
     </div>
+
+    <div class="chart-card">
+      <div class="section-title">📝 Justificativas de Bypass</div>
+      <div class="nota-dashboard">
+        Registre por que um bypass segue ativo. Não dá pra editar/apagar depois
+        de salvo - forma um histórico de acompanhamento (a tendência é revisar
+        mensalmente).
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tag do bypass</label>
+        <input class="form-control" id="justificativa-tag" placeholder="ex: PSLL_1210003A" list="lista-tags-bypass">
+        <datalist id="lista-tags-bypass"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Justificativa</label>
+        <textarea class="form-control" id="justificativa-texto" rows="3" placeholder="Motivo do bypass continuar ativo..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="adicionarJustificativa()">Adicionar justificativa</button>
+      <div class="login-error" id="justificativa-erro"></div>
+
+      <div class="subtabs" id="justificativa-filtros" style="margin-top:20px">
+        <button class="subtab-btn active" data-filtro="tudo" onclick="trocarFiltroJustificativas('tudo')">Tudo</button>
+        <button class="subtab-btn" data-filtro="mes" onclick="trocarFiltroJustificativas('mes')">Este mês</button>
+        <button class="subtab-btn" data-filtro="personalizado" onclick="trocarFiltroJustificativas('personalizado')">Personalizado</button>
+      </div>
+      <div id="justificativa-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px">
+        <div>
+          <label class="form-label">De</label>
+          <input class="form-control" type="date" id="justificativa-data-de">
+        </div>
+        <div>
+          <label class="form-label">Até</label>
+          <input class="form-control" type="date" id="justificativa-data-ate">
+        </div>
+        <button class="btn btn-primary" onclick="renderizarJustificativas()">Aplicar</button>
+      </div>
+
+      <div id="lista-justificativas"><div class="loading">Carregando...</div></div>
+    </div>
+
     <div class="charts-grid">
       <div class="chart-card">
         <h3>📈 Bypass por mês (nº de ativações)</h3>
@@ -617,6 +657,7 @@ async function carregarDashboard() {
   renderizarAlertaAlarme();
   renderizarAlertaBypass();
   renderizarBypassCriticos();
+  carregarJustificativas();
   desenharGraficosAlarme();
   estadoDashboard.desenhados.alarme = true;
 }
@@ -712,9 +753,104 @@ function renderizarBypassCriticos() {
           <div class="alerta-critico-dias">${dias} dias · ${situacao}</div>
         </div>
         <div class="progresso-bar"><div class="progresso-fill ${nivel}" style="width:${pct}%"></div></div>
+        <button class="btn" style="align-self:flex-start; padding:4px 10px; font-size:0.72rem; background:var(--accent2); color:#0f0f1a" onclick="preencherJustificativa('${escapeHtml(s.tag)}')">📝 Justificar</button>
       </div>
     `;
   }).join('');
+}
+
+// ---------- JUSTIFICATIVAS DE BYPASS ----------
+
+let todasJustificativas = [];
+let filtroJustificativas = 'tudo';
+
+function preencherJustificativa(tag) {
+  trocarDashboardTipo('bypass');
+  document.getElementById('justificativa-tag').value = tag;
+  const campo = document.getElementById('justificativa-texto');
+  campo.focus();
+  campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function adicionarJustificativa() {
+  const tag = document.getElementById('justificativa-tag').value.trim();
+  const texto = document.getElementById('justificativa-texto').value.trim();
+  const erroEl = document.getElementById('justificativa-erro');
+  erroEl.textContent = '';
+  if (!tag || !texto) { erroEl.textContent = 'Preencha a tag e a justificativa.'; return; }
+
+  const agora = new Date();
+  const mesReferencia = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+  const bypassAtivo = estado.ativosBypass.find(s => s.tag === tag);
+
+  try {
+    await db.collection('justificativas_bypass').add({
+      tag,
+      descricao: bypassAtivo ? bypassAtivo.descricao : '',
+      texto,
+      autor_email: auth.currentUser.email,
+      mes_referencia: mesReferencia,
+      criado_em: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    document.getElementById('justificativa-texto').value = '';
+    await carregarJustificativas();
+  } catch (e) {
+    erroEl.textContent = 'Não foi possível salvar. Tente novamente.';
+  }
+}
+
+function trocarFiltroJustificativas(filtro) {
+  filtroJustificativas = filtro;
+  document.querySelectorAll('#justificativa-filtros .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === filtro));
+  document.getElementById('justificativa-datas').style.display = filtro === 'personalizado' ? 'flex' : 'none';
+  renderizarJustificativas();
+}
+
+async function carregarJustificativas() {
+  const snap = await db.collection('justificativas_bypass').orderBy('criado_em', 'desc').get();
+  todasJustificativas = snap.docs.map(d => d.data());
+
+  const tags = new Set(estado.ativosBypass.map(s => s.tag));
+  document.getElementById('lista-tags-bypass').innerHTML =
+    Array.from(tags).sort().map(t => `<option value="${escapeHtml(t)}"></option>`).join('');
+
+  renderizarJustificativas();
+}
+
+function renderizarJustificativas() {
+  const alvo = document.getElementById('lista-justificativas');
+  let lista = todasJustificativas;
+
+  if (filtroJustificativas === 'mes') {
+    const agora = new Date();
+    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    lista = lista.filter(j => j.mes_referencia === mesAtual);
+  } else if (filtroJustificativas === 'personalizado') {
+    const de = document.getElementById('justificativa-data-de').value;
+    const ate = document.getElementById('justificativa-data-ate').value;
+    lista = lista.filter(j => {
+      if (!j.criado_em) return false;
+      const data = j.criado_em.toDate ? j.criado_em.toDate() : new Date(j.criado_em);
+      if (de && data < new Date(de + 'T00:00:00')) return false;
+      if (ate && data > new Date(ate + 'T23:59:59')) return false;
+      return true;
+    });
+  }
+
+  if (!lista.length) {
+    alvo.innerHTML = '<div class="empty-state">Nenhuma justificativa registrada nesse período.</div>';
+    return;
+  }
+
+  alvo.innerHTML = lista.map(j => `
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:6px">
+        <div class="alerta-tag">${escapeHtml(j.tag)}</div>
+        <div class="alerta-desc">${formatarData(j.criado_em)} · ${escapeHtml(j.autor_email || '—')}</div>
+      </div>
+      <div style="font-size:0.82rem">${escapeHtml(j.texto)}</div>
+    </div>
+  `).join('');
 }
 
 function montarItemAlerta(s, classe) {
