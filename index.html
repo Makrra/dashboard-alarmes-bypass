@@ -86,6 +86,9 @@ body {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
 }
+/* PAGES */
+.page { display: none; }
+.page.active { display: block; }
 /* TABS */
 .tabs { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; }
 .tab-btn {
@@ -246,11 +249,11 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
         </div>
       </div>
 
-      <div class="tabs">
+      <div class="tabs" id="explorar-tabs">
         <button class="tab-btn active" data-tipo="alarme" onclick="trocarTipo('alarme')">Alarmes</button>
         <button class="tab-btn" data-tipo="bypass" onclick="trocarTipo('bypass')">Bypass</button>
       </div>
-      <div class="subtabs">
+      <div class="subtabs" id="explorar-subtabs">
         <button class="subtab-btn active" data-visao="sessoes" onclick="trocarVisao('sessoes')">Sessões</button>
         <button class="subtab-btn" data-visao="resumo" onclick="trocarVisao('resumo')">Resumo por tag</button>
       </div>
@@ -790,14 +793,14 @@ function popularFiltroOperadores() {
 
 function trocarTipo(tipo) {
   estado.tipo = tipo;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
+  document.querySelectorAll('#explorar-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
   popularFiltroOperadores();
   renderizar();
 }
 
 function trocarVisao(visao) {
   estado.visao = visao;
-  document.querySelectorAll('.subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.visao === visao));
+  document.querySelectorAll('#explorar-subtabs .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.visao === visao));
   renderizar();
 }
 
