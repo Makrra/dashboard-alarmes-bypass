@@ -151,6 +151,25 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 .alerta-desc { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alerta-tempo { font-size: 0.78rem; font-weight: 700; color: var(--red); white-space: nowrap; }
 .alerta-item.bypass .alerta-tempo { color: var(--yellow); }
+.alerta-critico {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px; border-radius: 8px;
+  background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.25);
+}
+.alerta-critico.nivel-atencao { background: rgba(253,203,110,.08); border-color: rgba(253,203,110,.25); }
+.alerta-critico.nivel-alerta { background: rgba(255,159,67,.10); border-color: rgba(255,159,67,.3); }
+.alerta-critico.nivel-limite { animation: pulsarLimite 1.4s ease-in-out infinite; }
+@keyframes pulsarLimite {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,107,.35); }
+  50% { box-shadow: 0 0 0 5px rgba(255,107,107,0); }
+}
+.alerta-critico-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.alerta-critico-dias { font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.progresso-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; }
+.progresso-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+.progresso-fill.nivel-atencao { background: var(--yellow); }
+.progresso-fill.nivel-alerta { background: #ff9f43; }
+.progresso-fill.nivel-limite { background: var(--red); }
 </style>
 </head>
 <body>
@@ -497,6 +516,11 @@ const ESQUELETO_DASHBOARD = `
       (não é atualizada em tempo real).
     </div>
     <div class="kpi-grid" id="kpi-grid-bypass"></div>
+    <div class="chart-card">
+      <div class="section-title">🚨 Bypasses com mais de 120 dias ativos <span class="badge badge-ativo" id="contagem-bypass-criticos"></span></div>
+      <div class="nota-dashboard" style="margin-bottom:10px">Limite de atenção: 180 dias ativo. Ordenado do mais próximo do limite para o mais distante.</div>
+      <div class="alerta-lista" id="lista-bypass-criticos"></div>
+    </div>
     <div class="charts-grid">
       <div class="chart-card">
         <h3>📈 Bypass por mês (nº de ativações)</h3>
@@ -592,6 +616,7 @@ async function carregarDashboard() {
   renderizarKPIsBypass();
   renderizarAlertaAlarme();
   renderizarAlertaBypass();
+  renderizarBypassCriticos();
   desenharGraficosAlarme();
   estadoDashboard.desenhados.alarme = true;
 }
@@ -624,16 +649,20 @@ function renderizarKPIsAlarme() {
   `).join('');
 }
 
+const SEGUNDOS_POR_DIA = 86400;
+const LIMIAR_ATENCAO_DIAS = 120;
+const LIMIAR_CRITICO_DIAS = 180;
+
 function renderizarKPIsBypass() {
   const totalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.qtd_ativacoes, 0);
-  const tempoTotalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.tempo_total_bypass_s, 0);
+  const criticos = estado.ativosBypass.filter(s => s.duracao_s > LIMIAR_ATENCAO_DIAS * SEGUNDOS_POR_DIA);
   const topOperadores = agruparOperadoresBypass();
   const operadorTop = topOperadores.length ? `${topOperadores[0][0]} (${topOperadores[0][1]}x)` : '—';
 
   const kpis = [
     { label: 'Bypass (total)', valor: totalBypass.toLocaleString('pt-BR') },
     { label: 'Bypass ativos agora', valor: estado.ativosBypass.length, destaque: estado.ativosBypass.length ? 'yellow' : 'green' },
-    { label: 'Tempo total em bypass', valor: formatarDuracaoSegundos(tempoTotalBypass) },
+    { label: 'Bypass > 120 dias ativos', valor: criticos.length, destaque: criticos.length ? 'red' : 'green' },
     { label: 'Operador mais frequente', valor: operadorTop },
   ];
 
@@ -643,6 +672,49 @@ function renderizarKPIsBypass() {
       <div class="kpi-label">${k.label}</div>
     </div>
   `).join('');
+}
+
+function nivelCritico(dias) {
+  if (dias >= LIMIAR_CRITICO_DIAS) return 'nivel-limite';
+  if (dias >= 150) return 'nivel-alerta';
+  return 'nivel-atencao';
+}
+
+function renderizarBypassCriticos() {
+  const criticos = estado.ativosBypass
+    .filter(s => s.duracao_s > LIMIAR_ATENCAO_DIAS * SEGUNDOS_POR_DIA)
+    .slice()
+    .sort((a, b) => b.duracao_s - a.duracao_s);
+
+  document.getElementById('contagem-bypass-criticos').textContent = criticos.length;
+
+  if (!criticos.length) {
+    document.getElementById('lista-bypass-criticos').innerHTML =
+      '<div class="empty-state">Nenhum bypass ativo passou de 120 dias.</div>';
+    return;
+  }
+
+  document.getElementById('lista-bypass-criticos').innerHTML = criticos.map(s => {
+    const dias = Math.floor(s.duracao_s / SEGUNDOS_POR_DIA);
+    const nivel = nivelCritico(dias);
+    const pct = Math.min(100, Math.round((dias / LIMIAR_CRITICO_DIAS) * 100));
+    const restante = LIMIAR_CRITICO_DIAS - dias;
+    const situacao = restante > 0
+      ? `faltam ${restante} dia(s) para 180`
+      : `${-restante} dia(s) acima de 180`;
+    return `
+      <div class="alerta-critico ${nivel}">
+        <div class="alerta-critico-topo">
+          <div class="alerta-info">
+            <div class="alerta-tag">${escapeHtml(s.tag)}</div>
+            <div class="alerta-desc">${escapeHtml(s.descricao)} · aberto por ${escapeHtml(s.operador_abertura || '—')}</div>
+          </div>
+          <div class="alerta-critico-dias">${dias} dias · ${situacao}</div>
+        </div>
+        <div class="progresso-bar"><div class="progresso-fill ${nivel}" style="width:${pct}%"></div></div>
+      </div>
+    `;
+  }).join('');
 }
 
 function montarItemAlerta(s, classe) {
