@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg: #0f0f1a;
@@ -115,6 +116,38 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 .resultado-info { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
 .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.85rem; }
 .loading { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9rem; }
+/* DASHBOARD */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.kpi-valor { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
+.kpi-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-top: 4px; }
+.kpi-card.destaque-red .kpi-valor { color: var(--red); }
+.kpi-card.destaque-yellow .kpi-valor { color: var(--yellow); }
+.kpi-card.destaque-green .kpi-valor { color: var(--green); }
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.chart-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.chart-card h3 { font-size: 0.85rem; margin-bottom: 12px; font-weight: 600; }
+.chart-card canvas { max-height: 260px; }
+.section-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.nota-dashboard { font-size: 0.72rem; color: var(--muted); margin-bottom: 14px; }
+.alerta-lista { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.alerta-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 8px;
+  background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.25);
+}
+.alerta-item.bypass { background: rgba(253,203,110,.08); border-color: rgba(253,203,110,.25); }
+.alerta-info { min-width: 0; }
+.alerta-tag { font-weight: 600; font-size: 0.85rem; }
+.alerta-desc { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alerta-tempo { font-size: 0.78rem; font-weight: 700; color: var(--red); white-space: nowrap; }
+.alerta-item.bypass .alerta-tempo { color: var(--yellow); }
 </style>
 </head>
 <body>
@@ -178,42 +211,53 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
   </div>
 
   <div class="container">
-    <div class="card filtros">
-      <div>
-        <label>Período</label>
-        <select class="form-control" id="filtro-mes" onchange="aoTrocarMes()"></select>
-      </div>
-      <div>
-        <label>Buscar (tag ou descrição)</label>
-        <input class="form-control" id="filtro-texto" placeholder="ex: PSLL_1210003A" oninput="renderizar()">
-      </div>
-      <div>
-        <label>Operador</label>
-        <select class="form-control" id="filtro-operador" onchange="renderizar()">
-          <option value="">Todos</option>
-        </select>
-      </div>
-      <div>
-        <label>Status</label>
-        <select class="form-control" id="filtro-status" onchange="renderizar()">
-          <option value="">Todos</option>
-          <option value="ATIVO (em aberto)">Ainda ativo</option>
-          <option value="Encerrado">Encerrado</option>
-        </select>
-      </div>
+    <div class="tabs" id="nav-paginas">
+      <button class="tab-btn active" data-pagina="dashboard" onclick="trocarPaginaPrincipal('dashboard')">📊 Dashboard</button>
+      <button class="tab-btn" data-pagina="explorar" onclick="trocarPaginaPrincipal('explorar')">🔍 Explorar Dados</button>
     </div>
 
-    <div class="tabs">
-      <button class="tab-btn active" data-tipo="alarme" onclick="trocarTipo('alarme')">Alarmes</button>
-      <button class="tab-btn" data-tipo="bypass" onclick="trocarTipo('bypass')">Bypass</button>
-    </div>
-    <div class="subtabs">
-      <button class="subtab-btn active" data-visao="sessoes" onclick="trocarVisao('sessoes')">Sessões</button>
-      <button class="subtab-btn" data-visao="resumo" onclick="trocarVisao('resumo')">Resumo por tag</button>
+    <div class="page active" id="pagina-dashboard">
+      <div id="dashboard-conteudo"><div class="loading">Carregando painel...</div></div>
     </div>
 
-    <div class="card">
-      <div id="conteudo"><div class="loading">Carregando...</div></div>
+    <div class="page" id="pagina-explorar">
+      <div class="card filtros">
+        <div>
+          <label>Período</label>
+          <select class="form-control" id="filtro-mes" onchange="aoTrocarMes()"></select>
+        </div>
+        <div>
+          <label>Buscar (tag ou descrição)</label>
+          <input class="form-control" id="filtro-texto" placeholder="ex: PSLL_1210003A" oninput="renderizar()">
+        </div>
+        <div>
+          <label>Operador</label>
+          <select class="form-control" id="filtro-operador" onchange="renderizar()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div>
+          <label>Status</label>
+          <select class="form-control" id="filtro-status" onchange="renderizar()">
+            <option value="">Todos</option>
+            <option value="ATIVO (em aberto)">Ainda ativo</option>
+            <option value="Encerrado">Encerrado</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tipo="alarme" onclick="trocarTipo('alarme')">Alarmes</button>
+        <button class="tab-btn" data-tipo="bypass" onclick="trocarTipo('bypass')">Bypass</button>
+      </div>
+      <div class="subtabs">
+        <button class="subtab-btn active" data-visao="sessoes" onclick="trocarVisao('sessoes')">Sessões</button>
+        <button class="subtab-btn" data-visao="resumo" onclick="trocarVisao('resumo')">Resumo por tag</button>
+      </div>
+
+      <div class="card">
+        <div id="conteudo"><div class="loading">Carregando...</div></div>
+      </div>
     </div>
   </div>
 </div>
@@ -242,6 +286,11 @@ const estado = {
   sessoesBypass: [],
   resumoAlarme: [],
   resumoBypass: [],
+  // Agregados de todos os periodos, usados so pelo Dashboard (pagina inicial)
+  todosResumoAlarme: [],
+  todosResumoBypass: [],
+  ativosAlarme: [],
+  ativosBypass: [],
 };
 
 // ---------- AUTENTICAÇÃO ----------
@@ -275,6 +324,7 @@ auth.onAuthStateChanged(async user => {
     document.getElementById('btn-aprovacoes').style.display = user.uid === ADMIN_UID ? 'inline-block' : 'none';
     mostrarTela('app');
     carregarPeriodos();
+    carregarDashboard();
   } else {
     mostrarTela('pending-screen');
   }
@@ -394,7 +444,244 @@ function sair() {
   auth.signOut();
 }
 
-// ---------- CARREGAMENTO DE DADOS ----------
+// ---------- NAVEGAÇÃO PRINCIPAL ----------
+
+function trocarPaginaPrincipal(pagina) {
+  document.querySelectorAll('#nav-paginas .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.pagina === pagina));
+  document.getElementById('pagina-dashboard').classList.toggle('active', pagina === 'dashboard');
+  document.getElementById('pagina-explorar').classList.toggle('active', pagina === 'explorar');
+}
+
+// ---------- DASHBOARD ----------
+
+const ESQUELETO_DASHBOARD = `
+  <div class="nota-dashboard">
+    A duração dos itens "ainda ativos" foi calculada no momento do último envio de dados
+    (não é atualizada em tempo real).
+  </div>
+  <div class="kpi-grid" id="kpi-grid"></div>
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>📈 Alarmes por mês (nº de atuações)</h3>
+      <canvas id="grafico-alarmes-mes"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>📈 Bypass por mês (nº de ativações)</h3>
+      <canvas id="grafico-bypass-mes"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>🥧 Status das atuações de alarme</h3>
+      <canvas id="grafico-status-alarme"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>👤 Ativações de bypass por operador</h3>
+      <canvas id="grafico-top-operadores"></canvas>
+    </div>
+  </div>
+  <div class="charts-grid" style="grid-template-columns:1fr">
+    <div class="chart-card">
+      <h3>🏆 Top 10 alarmes mais atuados</h3>
+      <canvas id="grafico-top-alarmes"></canvas>
+    </div>
+  </div>
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="section-title">🔔 Alarmes ainda ativos <span class="badge badge-ativo" id="contagem-alarmes-ativos"></span></div>
+      <div class="alerta-lista" id="lista-alarmes-ativos"></div>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">⚠️ Bypasses ainda ativos <span class="badge badge-ativo" id="contagem-bypass-ativos"></span></div>
+      <div class="alerta-lista" id="lista-bypass-ativos"></div>
+    </div>
+  </div>
+`;
+
+const graficos = {};
+
+function formatarDuracaoSegundos(segundos) {
+  if (segundos === null || segundos === undefined || segundos < 0) return '—';
+  const h = Math.floor(segundos / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  const s = Math.floor(segundos % 60);
+  if (h >= 48) {
+    const d = Math.floor(h / 24), hh = h % 24;
+    return `${d}d ${String(hh).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`;
+  }
+  return `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+}
+
+function agruparPorMes(lista, campo) {
+  const mapa = {};
+  lista.forEach(r => { mapa[r.mes_referencia] = (mapa[r.mes_referencia] || 0) + (r[campo] || 0); });
+  return Object.keys(mapa).sort().map(mes => ({ mes, valor: mapa[mes] }));
+}
+
+function agruparPorTag(lista, campoQtd, campoTempo) {
+  const mapa = {};
+  lista.forEach(r => {
+    const atual = mapa[r.tag] || { tag: r.tag, descricao: r.descricao, qtd: 0, tempo: 0 };
+    atual.qtd += r[campoQtd] || 0;
+    atual.tempo += r[campoTempo] || 0;
+    mapa[r.tag] = atual;
+  });
+  return Object.values(mapa);
+}
+
+function agruparOperadoresBypass() {
+  const mapa = {};
+  estado.todosResumoBypass.forEach(r => {
+    const ops = r.operadores || {};
+    Object.keys(ops).forEach(op => { mapa[op] = (mapa[op] || 0) + ops[op]; });
+  });
+  return Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 10);
+}
+
+async function carregarDashboard() {
+  const alvo = document.getElementById('dashboard-conteudo');
+  const [ra, rb, aa, ab] = await Promise.all([
+    db.collection('resumos_alarme').get(),
+    db.collection('resumos_bypass').get(),
+    db.collection('sessoes_alarme').where('status', '==', 'ATIVO (em aberto)').get(),
+    db.collection('sessoes_bypass').where('status', '==', 'ATIVO (em aberto)').get(),
+  ]);
+  estado.todosResumoAlarme = ra.docs.map(d => d.data());
+  estado.todosResumoBypass = rb.docs.map(d => d.data());
+  estado.ativosAlarme = aa.docs.map(d => d.data());
+  estado.ativosBypass = ab.docs.map(d => d.data());
+
+  if (!estado.todosResumoAlarme.length && !estado.todosResumoBypass.length) {
+    alvo.innerHTML = '<div class="empty-state">Nenhum dado enviado ainda.</div>';
+    return;
+  }
+
+  alvo.innerHTML = ESQUELETO_DASHBOARD;
+  renderizarKPIs();
+  renderizarAlertas();
+  desenharGraficos();
+}
+
+function renderizarKPIs() {
+  const totalAlarmes = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_atuacoes, 0);
+  const totalReconhecidas = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_reconhecidas, 0);
+  const totalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.qtd_ativacoes, 0);
+  const pctReconhecido = totalAlarmes ? Math.round((totalReconhecidas / totalAlarmes) * 100) : 0;
+
+  let somaTempoReconhecimento = 0;
+  estado.todosResumoAlarme.forEach(r => {
+    if (r.tempo_medio_reconhecimento_s != null) {
+      somaTempoReconhecimento += r.tempo_medio_reconhecimento_s * r.qtd_reconhecidas;
+    }
+  });
+  const tempoMedioGeral = totalReconhecidas ? somaTempoReconhecimento / totalReconhecidas : null;
+
+  const kpis = [
+    { label: 'Alarmes (total)', valor: totalAlarmes.toLocaleString('pt-BR') },
+    { label: 'Bypass (total)', valor: totalBypass.toLocaleString('pt-BR') },
+    { label: 'Alarmes ativos agora', valor: estado.ativosAlarme.length, destaque: estado.ativosAlarme.length ? 'red' : 'green' },
+    { label: 'Bypass ativos agora', valor: estado.ativosBypass.length, destaque: estado.ativosBypass.length ? 'yellow' : 'green' },
+    { label: '% alarmes reconhecidos', valor: pctReconhecido + '%' },
+    { label: 'Tempo médio p/ reconhecer', valor: formatarDuracaoSegundos(tempoMedioGeral) },
+  ];
+
+  document.getElementById('kpi-grid').innerHTML = kpis.map(k => `
+    <div class="kpi-card ${k.destaque ? 'destaque-' + k.destaque : ''}">
+      <div class="kpi-valor">${k.valor}</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>
+  `).join('');
+}
+
+function renderizarAlertas() {
+  const montarItem = (s, classe) => `
+    <div class="alerta-item ${classe}">
+      <div class="alerta-info">
+        <div class="alerta-tag">${escapeHtml(s.tag)}</div>
+        <div class="alerta-desc">${escapeHtml(s.descricao)} · aberto por ${escapeHtml(s.operador_abertura || '—')}</div>
+      </div>
+      <div class="alerta-tempo">${escapeHtml(s.duracao_fmt)}</div>
+    </div>
+  `;
+
+  document.getElementById('contagem-alarmes-ativos').textContent = estado.ativosAlarme.length;
+  document.getElementById('lista-alarmes-ativos').innerHTML = estado.ativosAlarme.length
+    ? estado.ativosAlarme.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItem(s, '')).join('')
+    : '<div class="empty-state">Nenhum alarme ativo no momento.</div>';
+
+  document.getElementById('contagem-bypass-ativos').textContent = estado.ativosBypass.length;
+  document.getElementById('lista-bypass-ativos').innerHTML = estado.ativosBypass.length
+    ? estado.ativosBypass.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItem(s, 'bypass')).join('')
+    : '<div class="empty-state">Nenhum bypass ativo no momento.</div>';
+}
+
+function opcoesBase(extra) {
+  return Object.assign({
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#8892a4' }, grid: { color: '#2a2a45' } },
+      y: { ticks: { color: '#8892a4' }, grid: { color: '#2a2a45' } },
+    },
+  }, extra || {});
+}
+
+function desenharGraficos() {
+  Object.keys(graficos).forEach(id => { graficos[id].destroy(); delete graficos[id]; });
+
+  const porMesAlarme = agruparPorMes(estado.todosResumoAlarme, 'qtd_atuacoes');
+  graficos.alarmesMes = new Chart(document.getElementById('grafico-alarmes-mes'), {
+    type: 'bar',
+    data: { labels: porMesAlarme.map(m => m.mes), datasets: [{ data: porMesAlarme.map(m => m.valor), backgroundColor: '#e94560', borderRadius: 6 }] },
+    options: opcoesBase(),
+  });
+
+  const porMesBypass = agruparPorMes(estado.todosResumoBypass, 'qtd_ativacoes');
+  graficos.bypassMes = new Chart(document.getElementById('grafico-bypass-mes'), {
+    type: 'bar',
+    data: { labels: porMesBypass.map(m => m.mes), datasets: [{ data: porMesBypass.map(m => m.valor), backgroundColor: '#fdcb6e', borderRadius: 6 }] },
+    options: opcoesBase(),
+  });
+
+  const totalReconhecidas = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_reconhecidas, 0);
+  const totalSozinho = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_retornou_sozinho, 0);
+  const abertosComAck = estado.ativosAlarme.filter(s => s.ack_em).length;
+  const abertosSemAck = estado.ativosAlarme.length - abertosComAck;
+  graficos.statusAlarme = new Chart(document.getElementById('grafico-status-alarme'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Reconhecido (encerrado)', 'Retornou sozinho (encerrado)', 'Ainda ativo'],
+      datasets: [{
+        data: [totalReconhecidas - abertosComAck, totalSozinho - abertosSemAck, estado.ativosAlarme.length],
+        backgroundColor: ['#00b894', '#fdcb6e', '#ff6b6b'],
+      }],
+    },
+    options: opcoesBase({ plugins: { legend: { display: true, position: 'bottom', labels: { color: '#e2e2e2' } } }, scales: {} }),
+  });
+
+  const topOperadores = agruparOperadoresBypass();
+  graficos.topOperadores = new Chart(document.getElementById('grafico-top-operadores'), {
+    type: 'bar',
+    data: { labels: topOperadores.map(o => o[0]), datasets: [{ data: topOperadores.map(o => o[1]), backgroundColor: '#4ea8de', borderRadius: 6 }] },
+    options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
+  });
+
+  const topAlarmes = agruparPorTag(estado.todosResumoAlarme, 'qtd_atuacoes', 'tempo_total_atuado_s')
+    .sort((a, b) => b.qtd - a.qtd).slice(0, 10);
+  graficos.topAlarmes = new Chart(document.getElementById('grafico-top-alarmes'), {
+    type: 'bar',
+    data: { labels: topAlarmes.map(t => t.tag), datasets: [{ data: topAlarmes.map(t => t.qtd), backgroundColor: '#e94560', borderRadius: 6 }] },
+    options: Object.assign(opcoesBase({
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => {
+          const item = topAlarmes[ctx.dataIndex];
+          return `${item.qtd} atuações · ${formatarDuracaoSegundos(item.tempo)} no total`;
+        } } },
+      },
+    }), { indexAxis: 'y' }),
+  });
+}
+
+// ---------- CARREGAMENTO DE DADOS (Explorar Dados) ----------
 
 async function carregarPeriodos() {
   const doc = await db.collection('metadados').doc('periodos').get();
