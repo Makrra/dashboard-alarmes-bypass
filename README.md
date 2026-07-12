@@ -13,8 +13,8 @@ gera automaticamente:
 
 1. Dê duplo clique em `dist\AnaliseAlarmesBypass.exe`.
 2. Quando pedir o caminho da pasta, arraste a pasta com os arquivos `.ALG`
-   (pode ter subpastas, tipo `2026\Janeiro\`) para dentro da janela preta e
-   aperte ENTER.
+   (pode ter subpastas, tipo `000_Dados Analise\2026\Janeiro\`) para dentro
+   da janela preta e aperte ENTER.
 3. Aguarde a mensagem "Concluido!". Os 3 arquivos ficam salvos numa subpasta
    chamada `Relatorios` dentro da pasta que você informou.
 4. Se aparecer algum erro, tire um print da tela antes de fechar.
@@ -42,6 +42,9 @@ máquina que for usar o `.exe`).
 - `relatorio_pdf_alarmes.py` / `relatorio_pdf_bypass.py` / `pdf_comum.py` —
   geram os PDFs didáticos (reportlab).
 - `main.py` — ponto de entrada (linha de comando).
+- `organizar_dados.py` — organiza `.ALG` soltos em `000_Dados Analise/<AAAA>/<Mês>/`
+  a partir da data codificada no nome do arquivo (`AAMMDDHH.ALG`). Idempotente.
+- `enviar_firebase.py` / `gerenciar_usuarios_firebase.py` — ver seção do painel online abaixo.
 
 ## Painel online (Firebase + GitHub Pages)
 
@@ -68,22 +71,49 @@ repositório é público, mas os dados não.
    Publicar**.
 7. Ative o **GitHub Pages** deste repositório (Settings > Pages).
 
-### Enviar dados do mês
+### Organizar arquivos novos
+
+Se `.ALG` novos forem jogados soltos em `000_Dados Analise/`, rode primeiro:
 
 ```bat
-python src/enviar_firebase.py "000_Dados Analise\2026"
+python src/organizar_dados.py "000_Dados Analise"
 ```
 
-Aponte sempre para a pasta do **ano inteiro** (não só o mês novo), para que
-sessões que ficaram em aberto num mês fechem corretamente quando reaparecem
-nos dados de um mês seguinte. O envio é idempotente — rodar de novo não
-duplica nada.
+Isso os move para `000_Dados Analise/<AAAA>/<Mês>/` com base na data no nome
+do arquivo. Não move arquivos com nome fora do padrão (reporta no final).
 
-### Adicionar/remover usuário do painel
-
-Não existe autocadastro na página:
+### Enviar dados
 
 ```bat
+python src/enviar_firebase.py "000_Dados Analise"
+```
+
+Aponte sempre para a pasta **raiz de todos os dados** (não um ano/mês
+específico), para que sessões que ficaram em aberto num período fechem
+corretamente quando reaparecem nos dados seguintes. O envio é idempotente —
+rodar de novo não duplica nada.
+
+**Cota gratuita do Firestore**: o plano Spark permite só 20 mil escritas por
+dia. Uma carga inicial grande (vários anos de uma vez) pode passar disso —
+use `--apenas-meses AAAA` (ou `AAAA-MM`) para restringir o que é gravado
+nesta execução sem afetar a reclassificação (que sempre usa o histórico
+completo), e rode o restante em outro dia:
+
+```bat
+python src/enviar_firebase.py "000_Dados Analise" --apenas-meses 2025
+python src/enviar_firebase.py "000_Dados Analise" --apenas-meses 2026
+```
+
+### Gestão de usuários do painel
+
+O painel tem autocadastro com aprovação manual (ver `index.html` — tela de
+cadastro + botão "Aprovações", visível só para o admin). Também dá pra
+gerenciar por linha de comando:
+
+```bat
+python src/gerenciar_usuarios_firebase.py listar-pendentes
+python src/gerenciar_usuarios_firebase.py aprovar email@exemplo.com
+python src/gerenciar_usuarios_firebase.py rejeitar email@exemplo.com
 python src/gerenciar_usuarios_firebase.py adicionar email@exemplo.com "senha-temporaria" "Nome Sobrenome"
 python src/gerenciar_usuarios_firebase.py remover email@exemplo.com
 python src/gerenciar_usuarios_firebase.py listar

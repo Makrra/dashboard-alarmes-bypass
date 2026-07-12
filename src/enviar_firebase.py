@@ -11,6 +11,16 @@ nada, so atualiza o que mudou.
 
 Uso:
     python src/enviar_firebase.py "C:\...\2026" [--dry-run]
+    python src/enviar_firebase.py "000_Dados Analise" --apenas-meses 2025
+
+O plano gratuito (Spark) do Firestore tem cota de 20 mil ESCRITAS por dia.
+Uma carga inicial grande (varios anos de uma vez) pode passar disso. Use
+--apenas-meses (prefixo de mes_referencia, ex: "2025" ou "2025-06") para
+restringir o que e GRAVADO nesta execucao sem afetar a reclassificacao (que
+sempre usa o historico completo da pasta informada, para sessoes que
+atravessam virada de mes/ano ficarem corretas) - rode de novo em outro dia
+(cota reseta a meia-noite, horario do Pacifico) com outro prefixo para
+completar o restante.
 
 Credencial (service account) esperada em:
     <raiz do projeto>\credenciais\firebase-service-account.json
@@ -203,6 +213,13 @@ def main():
         "--dry-run", action="store_true",
         help="Apenas mostra as contagens, sem gravar nada no Firestore",
     )
+    parser.add_argument(
+        "--apenas-meses", default=None, metavar="PREFIXO",
+        help="So GRAVA sessoes/resumos cujo mes_referencia comece com esse prefixo "
+             "(ex: '2025' ou '2025-06'). A reclassificacao continua usando o "
+             "historico completo da pasta informada. Util para nao estourar a "
+             "cota diaria gratuita do Firestore em cargas iniciais grandes.",
+    )
     args = parser.parse_args()
 
     print(f"Lendo arquivos .ALG em: {args.pasta}")
@@ -233,7 +250,17 @@ def main():
     print(f"  {len(sessoes_bypass)} sessao(oes) de bypass.")
     print(f"  {len(resumo_alarmes)} resumo(s) mensal(is) de alarme (mes+tag).")
     print(f"  {len(resumo_bypass)} resumo(s) mensal(is) de bypass (mes+tag).")
-    print(f"  Meses cobertos: {', '.join(meses)}")
+    print(f"  Meses cobertos (classificacao completa): {', '.join(meses)}")
+
+    if args.apenas_meses:
+        prefixo = args.apenas_meses
+        sessoes_alarmes = [s for s in sessoes_alarmes if s["mes_referencia"].startswith(prefixo)]
+        sessoes_bypass = [s for s in sessoes_bypass if s["mes_referencia"].startswith(prefixo)]
+        resumo_alarmes = [r for r in resumo_alarmes if r["mes_referencia"].startswith(prefixo)]
+        resumo_bypass = [r for r in resumo_bypass if r["mes_referencia"].startswith(prefixo)]
+        meses = [m for m in meses if m.startswith(prefixo)]
+        total_docs = len(sessoes_alarmes) + len(sessoes_bypass) + len(resumo_alarmes) + len(resumo_bypass)
+        print(f"\n  --apenas-meses={prefixo}: restrito a {len(meses)} mes(es), {total_docs} documento(s) a gravar.")
 
     if args.dry_run:
         print("\n--dry-run: nada foi gravado no Firestore.")
