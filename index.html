@@ -487,6 +487,24 @@ const ESQUELETO_DASHBOARD = `
       A duração dos alarmes "ainda ativos" foi calculada no momento do último envio de dados
       (não é atualizada em tempo real).
     </div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>📍 Alarmes por plataforma (visão geral, todos os períodos)</h3>
+        <canvas id="grafico-alarmes-plataforma"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="section-title">🔎 Filtrar por plataforma</div>
+        <div class="nota-dashboard" style="margin-bottom:10px">
+          Detectada a partir da descrição do alarme. O que não cita plataforma
+          nenhuma cai em "Não identificado".
+        </div>
+        <select class="form-control" id="alarme-plataforma-filtro" onchange="trocarPlataformaAlarme()">
+          <option value="tudo">Todas as plataformas</option>
+        </select>
+      </div>
+    </div>
+
     <div class="kpi-grid" id="kpi-grid-alarme"></div>
     <div class="charts-grid">
       <div class="chart-card">
@@ -586,7 +604,59 @@ const estadoDashboard = {
   tipo: 'alarme',
   desenhados: { alarme: false, bypass: false },
   periodoBypass: { tipo: 'tudo' },
+  plataformaAlarme: 'tudo',
 };
+
+// Deteccao de plataforma via texto da descricao do alarme (ex: "PAL - PPE-1A -
+// Cabeca" -> "PPE-1A"). So ~39% das descricoes citam a plataforma - o resto
+// cai em "Nao identificado" (nao existe no SCADA uma tabela poco->plataforma
+// pra completar isso automaticamente).
+function identificarPlataforma(descricao) {
+  const m = /(PARB|PPE)[- ]?0?(\d+)([A-Z]?)/i.exec(descricao || '');
+  if (!m) return 'Não identificado';
+  return `${m[1].toUpperCase()}-${m[2]}${m[3].toUpperCase()}`;
+}
+
+function alarmeNaPlataforma(item) {
+  return estadoDashboard.plataformaAlarme === 'tudo' || item.plataforma === estadoDashboard.plataformaAlarme;
+}
+
+function popularFiltroPlataforma() {
+  const plataformas = new Set(estado.todosResumoAlarme.map(r => r.plataforma));
+  const ordenadas = Array.from(plataformas).sort((a, b) => {
+    if (a === 'Não identificado') return 1;
+    if (b === 'Não identificado') return -1;
+    return a.localeCompare(b);
+  });
+  document.getElementById('alarme-plataforma-filtro').innerHTML =
+    '<option value="tudo">Todas as plataformas</option>' +
+    ordenadas.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+}
+
+function trocarPlataformaAlarme() {
+  estadoDashboard.plataformaAlarme = document.getElementById('alarme-plataforma-filtro').value;
+  renderizarKPIsAlarme();
+  renderizarAlertaAlarme();
+  ['alarmesMes', 'statusAlarme', 'topAlarmes'].forEach(id => {
+    if (graficos[id]) { graficos[id].destroy(); delete graficos[id]; }
+  });
+  desenharGraficosAlarme();
+}
+
+function agruparPorPlataforma(lista) {
+  const mapa = {};
+  lista.forEach(r => { mapa[r.plataforma] = (mapa[r.plataforma] || 0) + r.qtd_atuacoes; });
+  return Object.entries(mapa).sort((a, b) => b[1] - a[1]);
+}
+
+function desenharGraficoPlataformasAlarme() {
+  const dados = agruparPorPlataforma(estado.todosResumoAlarme);
+  graficos.alarmesPlataforma = new Chart(document.getElementById('grafico-alarmes-plataforma'), {
+    type: 'bar',
+    data: { labels: dados.map(d => d[0]), datasets: [{ data: dados.map(d => d[1]), backgroundColor: '#4ea8de', borderRadius: 6 }] },
+    options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
+  });
+}
 
 function mesNoPeriodo(mesReferencia) {
   const tipo = estadoDashboard.periodoBypass.tipo;
@@ -627,7 +697,13 @@ function trocarDashboardTipo(tipo) {
   document.getElementById('dashboard-bypass').style.display = tipo === 'bypass' ? 'block' : 'none';
   if (!estadoDashboard.desenhados[tipo]) {
     estadoDashboard.desenhados[tipo] = true;
-    if (tipo === 'alarme') desenharGraficosAlarme(); else desenharGraficosBypass();
+    if (tipo === 'alarme') {
+      desenharGraficoPlataformasAlarme();
+      desenharGraficosAlarme();
+    } else {
+      desenharGraficosBypass();
+      carregarJustificativas();
+    }
   }
 }
 
@@ -682,6 +758,9 @@ async function carregarDashboard() {
   estado.ativosAlarme = aa.docs.map(d => d.data());
   estado.ativosBypass = ab.docs.map(d => d.data());
 
+  estado.todosResumoAlarme.forEach(r => { r.plataforma = identificarPlataforma(r.descricao); });
+  estado.ativosAlarme.forEach(s => { s.plataforma = identificarPlataforma(s.descricao); });
+
   if (!estado.todosResumoAlarme.length && !estado.todosResumoBypass.length) {
     alvo.innerHTML = '<div class="empty-state">Nenhum dado enviado ainda.</div>';
     return;
@@ -692,23 +771,28 @@ async function carregarDashboard() {
   estadoDashboard.tipo = 'alarme';
   estadoDashboard.desenhados = { alarme: false, bypass: false };
   estadoDashboard.periodoBypass = { tipo: 'tudo' };
+  estadoDashboard.plataformaAlarme = 'tudo';
+  popularFiltroPlataforma();
   renderizarKPIsAlarme();
   renderizarKPIsBypass();
   renderizarAlertaAlarme();
   renderizarAlertaBypass();
   renderizarBypassCriticos();
-  carregarJustificativas();
+  desenharGraficoPlataformasAlarme();
   desenharGraficosAlarme();
   estadoDashboard.desenhados.alarme = true;
 }
 
 function renderizarKPIsAlarme() {
-  const totalAlarmes = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_atuacoes, 0);
-  const totalReconhecidas = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_reconhecidas, 0);
+  const resumoFiltrado = estado.todosResumoAlarme.filter(alarmeNaPlataforma);
+  const ativosFiltrado = estado.ativosAlarme.filter(alarmeNaPlataforma);
+
+  const totalAlarmes = resumoFiltrado.reduce((s, r) => s + r.qtd_atuacoes, 0);
+  const totalReconhecidas = resumoFiltrado.reduce((s, r) => s + r.qtd_reconhecidas, 0);
   const pctReconhecido = totalAlarmes ? Math.round((totalReconhecidas / totalAlarmes) * 100) : 0;
 
   let somaTempoReconhecimento = 0;
-  estado.todosResumoAlarme.forEach(r => {
+  resumoFiltrado.forEach(r => {
     if (r.tempo_medio_reconhecimento_s != null) {
       somaTempoReconhecimento += r.tempo_medio_reconhecimento_s * r.qtd_reconhecidas;
     }
@@ -717,7 +801,7 @@ function renderizarKPIsAlarme() {
 
   const kpis = [
     { label: 'Alarmes (total)', valor: totalAlarmes.toLocaleString('pt-BR') },
-    { label: 'Alarmes ativos agora', valor: estado.ativosAlarme.length, destaque: estado.ativosAlarme.length ? 'red' : 'green' },
+    { label: 'Alarmes ativos agora', valor: ativosFiltrado.length, destaque: ativosFiltrado.length ? 'red' : 'green' },
     { label: '% alarmes reconhecidos', valor: pctReconhecido + '%' },
     { label: 'Tempo médio p/ reconhecer', valor: formatarDuracaoSegundos(tempoMedioGeral) },
   ];
@@ -896,10 +980,11 @@ function montarItemAlerta(s, classe) {
 }
 
 function renderizarAlertaAlarme() {
-  document.getElementById('contagem-alarmes-ativos').textContent = estado.ativosAlarme.length;
-  document.getElementById('lista-alarmes-ativos').innerHTML = estado.ativosAlarme.length
-    ? estado.ativosAlarme.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, '')).join('')
-    : '<div class="empty-state">Nenhum alarme ativo no momento.</div>';
+  const ativosFiltrado = estado.ativosAlarme.filter(alarmeNaPlataforma);
+  document.getElementById('contagem-alarmes-ativos').textContent = ativosFiltrado.length;
+  document.getElementById('lista-alarmes-ativos').innerHTML = ativosFiltrado.length
+    ? ativosFiltrado.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, '')).join('')
+    : '<div class="empty-state">Nenhum alarme ativo nessa plataforma.</div>';
 }
 
 function renderizarAlertaBypass() {
@@ -922,30 +1007,33 @@ function opcoesBase(extra) {
 }
 
 function desenharGraficosAlarme() {
-  const porMesAlarme = agruparPorMes(estado.todosResumoAlarme, 'qtd_atuacoes');
+  const resumoFiltrado = estado.todosResumoAlarme.filter(alarmeNaPlataforma);
+  const ativosFiltrado = estado.ativosAlarme.filter(alarmeNaPlataforma);
+
+  const porMesAlarme = agruparPorMes(resumoFiltrado, 'qtd_atuacoes');
   graficos.alarmesMes = new Chart(document.getElementById('grafico-alarmes-mes'), {
     type: 'bar',
     data: { labels: porMesAlarme.map(m => m.mes), datasets: [{ data: porMesAlarme.map(m => m.valor), backgroundColor: '#e94560', borderRadius: 6 }] },
     options: opcoesBase(),
   });
 
-  const totalReconhecidas = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_reconhecidas, 0);
-  const totalSozinho = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_retornou_sozinho, 0);
-  const abertosComAck = estado.ativosAlarme.filter(s => s.ack_em).length;
-  const abertosSemAck = estado.ativosAlarme.length - abertosComAck;
+  const totalReconhecidas = resumoFiltrado.reduce((s, r) => s + r.qtd_reconhecidas, 0);
+  const totalSozinho = resumoFiltrado.reduce((s, r) => s + r.qtd_retornou_sozinho, 0);
+  const abertosComAck = ativosFiltrado.filter(s => s.ack_em).length;
+  const abertosSemAck = ativosFiltrado.length - abertosComAck;
   graficos.statusAlarme = new Chart(document.getElementById('grafico-status-alarme'), {
     type: 'doughnut',
     data: {
       labels: ['Reconhecido (encerrado)', 'Retornou sozinho (encerrado)', 'Ainda ativo'],
       datasets: [{
-        data: [totalReconhecidas - abertosComAck, totalSozinho - abertosSemAck, estado.ativosAlarme.length],
+        data: [totalReconhecidas - abertosComAck, totalSozinho - abertosSemAck, ativosFiltrado.length],
         backgroundColor: ['#00b894', '#fdcb6e', '#ff6b6b'],
       }],
     },
     options: opcoesBase({ plugins: { legend: { display: true, position: 'bottom', labels: { color: '#e2e2e2' } } }, scales: {} }),
   });
 
-  const topAlarmes = agruparPorTag(estado.todosResumoAlarme, 'qtd_atuacoes', 'tempo_total_atuado_s')
+  const topAlarmes = agruparPorTag(resumoFiltrado, 'qtd_atuacoes', 'tempo_total_atuado_s')
     .sort((a, b) => b.qtd - a.qtd).slice(0, 10);
   graficos.topAlarmes = new Chart(document.getElementById('grafico-top-alarmes'), {
     type: 'bar',
