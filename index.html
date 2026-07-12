@@ -455,39 +455,54 @@ function trocarPaginaPrincipal(pagina) {
 // ---------- DASHBOARD ----------
 
 const ESQUELETO_DASHBOARD = `
-  <div class="nota-dashboard">
-    A duração dos itens "ainda ativos" foi calculada no momento do último envio de dados
-    (não é atualizada em tempo real).
+  <div class="subtabs" id="dashboard-subtabs">
+    <button class="subtab-btn active" data-tipo="alarme" onclick="trocarDashboardTipo('alarme')">🔔 Alarmes</button>
+    <button class="subtab-btn" data-tipo="bypass" onclick="trocarDashboardTipo('bypass')">⚠️ Bypass</button>
   </div>
-  <div class="kpi-grid" id="kpi-grid"></div>
-  <div class="charts-grid">
-    <div class="chart-card">
-      <h3>📈 Alarmes por mês (nº de atuações)</h3>
-      <canvas id="grafico-alarmes-mes"></canvas>
+
+  <div id="dashboard-alarme">
+    <div class="nota-dashboard">
+      A duração dos alarmes "ainda ativos" foi calculada no momento do último envio de dados
+      (não é atualizada em tempo real).
     </div>
-    <div class="chart-card">
-      <h3>📈 Bypass por mês (nº de ativações)</h3>
-      <canvas id="grafico-bypass-mes"></canvas>
+    <div class="kpi-grid" id="kpi-grid-alarme"></div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>📈 Alarmes por mês (nº de atuações)</h3>
+        <canvas id="grafico-alarmes-mes"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>🥧 Status das atuações de alarme</h3>
+        <canvas id="grafico-status-alarme"></canvas>
+      </div>
     </div>
-    <div class="chart-card">
-      <h3>🥧 Status das atuações de alarme</h3>
-      <canvas id="grafico-status-alarme"></canvas>
+    <div class="charts-grid" style="grid-template-columns:1fr">
+      <div class="chart-card">
+        <h3>🏆 Top 10 alarmes mais atuados</h3>
+        <canvas id="grafico-top-alarmes"></canvas>
+      </div>
     </div>
-    <div class="chart-card">
-      <h3>👤 Ativações de bypass por operador</h3>
-      <canvas id="grafico-top-operadores"></canvas>
-    </div>
-  </div>
-  <div class="charts-grid" style="grid-template-columns:1fr">
-    <div class="chart-card">
-      <h3>🏆 Top 10 alarmes mais atuados</h3>
-      <canvas id="grafico-top-alarmes"></canvas>
-    </div>
-  </div>
-  <div class="charts-grid">
     <div class="chart-card">
       <div class="section-title">🔔 Alarmes ainda ativos <span class="badge badge-ativo" id="contagem-alarmes-ativos"></span></div>
       <div class="alerta-lista" id="lista-alarmes-ativos"></div>
+    </div>
+  </div>
+
+  <div id="dashboard-bypass" style="display:none">
+    <div class="nota-dashboard">
+      A duração dos bypasses "ainda ativos" foi calculada no momento do último envio de dados
+      (não é atualizada em tempo real).
+    </div>
+    <div class="kpi-grid" id="kpi-grid-bypass"></div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>📈 Bypass por mês (nº de ativações)</h3>
+        <canvas id="grafico-bypass-mes"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>👤 Ativações de bypass por operador</h3>
+        <canvas id="grafico-top-operadores"></canvas>
+      </div>
     </div>
     <div class="chart-card">
       <div class="section-title">⚠️ Bypasses ainda ativos <span class="badge badge-ativo" id="contagem-bypass-ativos"></span></div>
@@ -497,6 +512,18 @@ const ESQUELETO_DASHBOARD = `
 `;
 
 const graficos = {};
+const estadoDashboard = { tipo: 'alarme', desenhados: { alarme: false, bypass: false } };
+
+function trocarDashboardTipo(tipo) {
+  estadoDashboard.tipo = tipo;
+  document.querySelectorAll('#dashboard-subtabs .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
+  document.getElementById('dashboard-alarme').style.display = tipo === 'alarme' ? 'block' : 'none';
+  document.getElementById('dashboard-bypass').style.display = tipo === 'bypass' ? 'block' : 'none';
+  if (!estadoDashboard.desenhados[tipo]) {
+    estadoDashboard.desenhados[tipo] = true;
+    if (tipo === 'alarme') desenharGraficosAlarme(); else desenharGraficosBypass();
+  }
+}
 
 function formatarDuracaoSegundos(segundos) {
   if (segundos === null || segundos === undefined || segundos < 0) return '—';
@@ -554,16 +581,21 @@ async function carregarDashboard() {
     return;
   }
 
+  Object.keys(graficos).forEach(id => { graficos[id].destroy(); delete graficos[id]; });
   alvo.innerHTML = ESQUELETO_DASHBOARD;
-  renderizarKPIs();
-  renderizarAlertas();
-  desenharGraficos();
+  estadoDashboard.tipo = 'alarme';
+  estadoDashboard.desenhados = { alarme: false, bypass: false };
+  renderizarKPIsAlarme();
+  renderizarKPIsBypass();
+  renderizarAlertaAlarme();
+  renderizarAlertaBypass();
+  desenharGraficosAlarme();
+  estadoDashboard.desenhados.alarme = true;
 }
 
-function renderizarKPIs() {
+function renderizarKPIsAlarme() {
   const totalAlarmes = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_atuacoes, 0);
   const totalReconhecidas = estado.todosResumoAlarme.reduce((s, r) => s + r.qtd_reconhecidas, 0);
-  const totalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.qtd_ativacoes, 0);
   const pctReconhecido = totalAlarmes ? Math.round((totalReconhecidas / totalAlarmes) * 100) : 0;
 
   let somaTempoReconhecimento = 0;
@@ -576,14 +608,12 @@ function renderizarKPIs() {
 
   const kpis = [
     { label: 'Alarmes (total)', valor: totalAlarmes.toLocaleString('pt-BR') },
-    { label: 'Bypass (total)', valor: totalBypass.toLocaleString('pt-BR') },
     { label: 'Alarmes ativos agora', valor: estado.ativosAlarme.length, destaque: estado.ativosAlarme.length ? 'red' : 'green' },
-    { label: 'Bypass ativos agora', valor: estado.ativosBypass.length, destaque: estado.ativosBypass.length ? 'yellow' : 'green' },
     { label: '% alarmes reconhecidos', valor: pctReconhecido + '%' },
     { label: 'Tempo médio p/ reconhecer', valor: formatarDuracaoSegundos(tempoMedioGeral) },
   ];
 
-  document.getElementById('kpi-grid').innerHTML = kpis.map(k => `
+  document.getElementById('kpi-grid-alarme').innerHTML = kpis.map(k => `
     <div class="kpi-card ${k.destaque ? 'destaque-' + k.destaque : ''}">
       <div class="kpi-valor">${k.valor}</div>
       <div class="kpi-label">${k.label}</div>
@@ -591,8 +621,29 @@ function renderizarKPIs() {
   `).join('');
 }
 
-function renderizarAlertas() {
-  const montarItem = (s, classe) => `
+function renderizarKPIsBypass() {
+  const totalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.qtd_ativacoes, 0);
+  const tempoTotalBypass = estado.todosResumoBypass.reduce((s, r) => s + r.tempo_total_bypass_s, 0);
+  const topOperadores = agruparOperadoresBypass();
+  const operadorTop = topOperadores.length ? `${topOperadores[0][0]} (${topOperadores[0][1]}x)` : '—';
+
+  const kpis = [
+    { label: 'Bypass (total)', valor: totalBypass.toLocaleString('pt-BR') },
+    { label: 'Bypass ativos agora', valor: estado.ativosBypass.length, destaque: estado.ativosBypass.length ? 'yellow' : 'green' },
+    { label: 'Tempo total em bypass', valor: formatarDuracaoSegundos(tempoTotalBypass) },
+    { label: 'Operador mais frequente', valor: operadorTop },
+  ];
+
+  document.getElementById('kpi-grid-bypass').innerHTML = kpis.map(k => `
+    <div class="kpi-card ${k.destaque ? 'destaque-' + k.destaque : ''}">
+      <div class="kpi-valor">${k.valor}</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>
+  `).join('');
+}
+
+function montarItemAlerta(s, classe) {
+  return `
     <div class="alerta-item ${classe}">
       <div class="alerta-info">
         <div class="alerta-tag">${escapeHtml(s.tag)}</div>
@@ -601,15 +652,19 @@ function renderizarAlertas() {
       <div class="alerta-tempo">${escapeHtml(s.duracao_fmt)}</div>
     </div>
   `;
+}
 
+function renderizarAlertaAlarme() {
   document.getElementById('contagem-alarmes-ativos').textContent = estado.ativosAlarme.length;
   document.getElementById('lista-alarmes-ativos').innerHTML = estado.ativosAlarme.length
-    ? estado.ativosAlarme.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItem(s, '')).join('')
+    ? estado.ativosAlarme.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, '')).join('')
     : '<div class="empty-state">Nenhum alarme ativo no momento.</div>';
+}
 
+function renderizarAlertaBypass() {
   document.getElementById('contagem-bypass-ativos').textContent = estado.ativosBypass.length;
   document.getElementById('lista-bypass-ativos').innerHTML = estado.ativosBypass.length
-    ? estado.ativosBypass.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItem(s, 'bypass')).join('')
+    ? estado.ativosBypass.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, 'bypass')).join('')
     : '<div class="empty-state">Nenhum bypass ativo no momento.</div>';
 }
 
@@ -624,20 +679,11 @@ function opcoesBase(extra) {
   }, extra || {});
 }
 
-function desenharGraficos() {
-  Object.keys(graficos).forEach(id => { graficos[id].destroy(); delete graficos[id]; });
-
+function desenharGraficosAlarme() {
   const porMesAlarme = agruparPorMes(estado.todosResumoAlarme, 'qtd_atuacoes');
   graficos.alarmesMes = new Chart(document.getElementById('grafico-alarmes-mes'), {
     type: 'bar',
     data: { labels: porMesAlarme.map(m => m.mes), datasets: [{ data: porMesAlarme.map(m => m.valor), backgroundColor: '#e94560', borderRadius: 6 }] },
-    options: opcoesBase(),
-  });
-
-  const porMesBypass = agruparPorMes(estado.todosResumoBypass, 'qtd_ativacoes');
-  graficos.bypassMes = new Chart(document.getElementById('grafico-bypass-mes'), {
-    type: 'bar',
-    data: { labels: porMesBypass.map(m => m.mes), datasets: [{ data: porMesBypass.map(m => m.valor), backgroundColor: '#fdcb6e', borderRadius: 6 }] },
     options: opcoesBase(),
   });
 
@@ -657,13 +703,6 @@ function desenharGraficos() {
     options: opcoesBase({ plugins: { legend: { display: true, position: 'bottom', labels: { color: '#e2e2e2' } } }, scales: {} }),
   });
 
-  const topOperadores = agruparOperadoresBypass();
-  graficos.topOperadores = new Chart(document.getElementById('grafico-top-operadores'), {
-    type: 'bar',
-    data: { labels: topOperadores.map(o => o[0]), datasets: [{ data: topOperadores.map(o => o[1]), backgroundColor: '#4ea8de', borderRadius: 6 }] },
-    options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
-  });
-
   const topAlarmes = agruparPorTag(estado.todosResumoAlarme, 'qtd_atuacoes', 'tempo_total_atuado_s')
     .sort((a, b) => b.qtd - a.qtd).slice(0, 10);
   graficos.topAlarmes = new Chart(document.getElementById('grafico-top-alarmes'), {
@@ -678,6 +717,22 @@ function desenharGraficos() {
         } } },
       },
     }), { indexAxis: 'y' }),
+  });
+}
+
+function desenharGraficosBypass() {
+  const porMesBypass = agruparPorMes(estado.todosResumoBypass, 'qtd_ativacoes');
+  graficos.bypassMes = new Chart(document.getElementById('grafico-bypass-mes'), {
+    type: 'bar',
+    data: { labels: porMesBypass.map(m => m.mes), datasets: [{ data: porMesBypass.map(m => m.valor), backgroundColor: '#fdcb6e', borderRadius: 6 }] },
+    options: opcoesBase(),
+  });
+
+  const topOperadores = agruparOperadoresBypass();
+  graficos.topOperadores = new Chart(document.getElementById('grafico-top-operadores'), {
+    type: 'bar',
+    data: { labels: topOperadores.map(o => o[0]), datasets: [{ data: topOperadores.map(o => o[1]), backgroundColor: '#4ea8de', borderRadius: 6 }] },
+    options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
   });
 }
 
