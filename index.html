@@ -146,7 +146,7 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
   border-radius: var(--radius); padding: 16px;
 }
 .chart-card h3 { font-size: 0.85rem; margin-bottom: 12px; font-weight: 600; }
-.chart-card canvas { max-height: 260px; }
+.grafico-wrap { position: relative; height: 260px; width: 100%; }
 .section-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .nota-dashboard { font-size: 0.72rem; color: var(--muted); margin-bottom: 14px; }
 .alerta-lista { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
@@ -502,17 +502,17 @@ const ESQUELETO_DASHBOARD = `
     <div class="charts-grid">
       <div class="chart-card">
         <h3>📈 Alarmes por mês (nº de atuações)</h3>
-        <canvas id="grafico-alarmes-mes"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-alarmes-mes"></canvas></div>
       </div>
       <div class="chart-card">
         <h3>🥧 Status das atuações de alarme</h3>
-        <canvas id="grafico-status-alarme"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-status-alarme"></canvas></div>
       </div>
     </div>
     <div class="charts-grid" style="grid-template-columns:1fr">
       <div class="chart-card">
         <h3>🏆 Top 10 alarmes mais atuados</h3>
-        <canvas id="grafico-top-alarmes"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-top-alarmes"></canvas></div>
       </div>
     </div>
     <div class="chart-card">
@@ -548,11 +548,11 @@ const ESQUELETO_DASHBOARD = `
     <div class="charts-grid">
       <div class="chart-card">
         <h3>📍 Alarmes por plataforma (visão geral, todos os períodos)</h3>
-        <canvas id="grafico-alarmes-plataforma"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-alarmes-plataforma"></canvas></div>
       </div>
       <div class="chart-card">
         <h3>🧪 Alarmes por categoria (visão geral, todos os períodos)</h3>
-        <canvas id="grafico-alarmes-categoria"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-alarmes-categoria"></canvas></div>
       </div>
     </div>
   </div>
@@ -614,11 +614,11 @@ const ESQUELETO_DASHBOARD = `
     <div class="charts-grid">
       <div class="chart-card">
         <h3>📈 Bypass por mês (nº de ativações)</h3>
-        <canvas id="grafico-bypass-mes"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-bypass-mes"></canvas></div>
       </div>
       <div class="chart-card">
         <h3>👤 Ativações de bypass por operador</h3>
-        <canvas id="grafico-top-operadores"></canvas>
+        <div class="grafico-wrap"><canvas id="grafico-top-operadores"></canvas></div>
       </div>
     </div>
     <div class="chart-card">
@@ -1085,10 +1085,11 @@ function renderizarAlertaBypass() {
 function opcoesBase(extra) {
   return Object.assign({
     responsive: true,
+    maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     scales: {
-      x: { ticks: { color: '#85929f' }, grid: { color: '#2a2a45' } },
-      y: { ticks: { color: '#85929f' }, grid: { color: '#2a2a45' } },
+      x: { ticks: { color: '#85929f' }, grid: { color: '#29323d' } },
+      y: { ticks: { color: '#85929f' }, grid: { color: '#29323d' } },
     },
   }, extra || {});
 }
