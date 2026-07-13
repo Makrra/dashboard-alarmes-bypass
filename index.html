@@ -34,13 +34,39 @@
   --red: #ff4d4d;
   --radius: 12px;
 }
+/* Tema claro: mesma sala de controle, iluminada. Os graficos (Chart.js)
+   continuam com as cores fixas do tema escuro - trate isso como uma
+   limitacao conhecida, nao um esquecimento. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef2f5;
+    --surface: #ffffff;
+    --card: #ffffff;
+    --border: #d7dee4;
+    --text: #16212b;
+    --muted: #55636f;
+    --accent: #1a6f91;
+    --accent-dim: #0d4a61;
+    --green: #157a4c;
+    --yellow: #9c5b00;
+    --red: #c73333;
+  }
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  font-variant-numeric: tabular-nums;
 }
+/* ICONS */
+.icon {
+  width: 1em; height: 1em; display: inline-block; vertical-align: -0.15em;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+}
+h3 .icon, .section-title .icon, .login-logo .icon { width: 1.15em; height: 1.15em; vertical-align: -0.2em; }
 /* LOGIN */
 .login-screen {
   position: fixed; inset: 0; background: var(--bg);
@@ -145,6 +171,11 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 16px;
 }
+/* Paineis operacionais (o que precisa de acao/atencao AGORA) recebem uma
+   tarja lateral - hierarquia por forma, nao so por estar mais acima na
+   pagina. Cor da tarja reflete a severidade tipica do painel. */
+.chart-card.prioridade { border-left: 3px solid var(--red); }
+.chart-card.prioridade.nivel-atencao-bypass { border-left-color: var(--yellow); }
 .chart-card h3 { font-size: 0.85rem; margin-bottom: 12px; font-weight: 600; }
 .grafico-wrap { position: relative; height: 260px; width: 100%; }
 .section-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -184,10 +215,31 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 </head>
 <body>
 
+<!-- Sprite de icones (traco simples, cor herdada via currentColor) -->
+<svg style="display:none" aria-hidden="true">
+  <defs>
+    <symbol id="ic-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="ic-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+    <symbol id="ic-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="ic-bars" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+    <symbol id="ic-pie" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+    <symbol id="ic-award" viewBox="0 0 24 24"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></symbol>
+    <symbol id="ic-pin" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="ic-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+    <symbol id="ic-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="ic-edit" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></symbol>
+    <symbol id="ic-filter" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></symbol>
+    <symbol id="ic-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+    <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="ic-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  </defs>
+</svg>
+
 <!-- ======= LOGIN / CADASTRO ======= -->
 <div class="login-screen" id="login-screen">
   <div class="login-card">
-    <div class="login-logo">⚠️ Alarmes &amp; Bypass</div>
+    <div class="login-logo"><svg class="icon"><use href="#ic-bell"></use></svg> Alarmes &amp; Bypass</div>
     <div class="login-sub" id="login-sub">Faça login para acessar o painel</div>
     <div class="form-group" id="grupo-nome" style="display:none">
       <label class="form-label">Nome completo</label>
@@ -210,7 +262,7 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 <!-- ======= AGUARDANDO APROVAÇÃO ======= -->
 <div class="login-screen" id="pending-screen" style="display:none">
   <div class="login-card">
-    <div class="login-logo">⏳ Aguardando aprovação</div>
+    <div class="login-logo"><svg class="icon"><use href="#ic-clock"></use></svg> Aguardando aprovação</div>
     <div class="login-sub">
       Seu cadastro foi recebido. Um administrador precisa liberar seu acesso
       antes que você consiga ver os dados. Tente novamente mais tarde ou
@@ -223,7 +275,7 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 <!-- ======= APROVAÇÕES (só admin) ======= -->
 <div class="login-screen" id="aprovacoes-screen" style="display:none">
   <div class="login-card" style="max-width:520px; text-align:left">
-    <div class="login-logo" style="text-align:center">🔑 Aprovações pendentes</div>
+    <div class="login-logo" style="text-align:center"><svg class="icon"><use href="#ic-check"></use></svg> Aprovações pendentes</div>
     <div id="lista-aprovacoes"><div class="loading">Carregando...</div></div>
     <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="fecharAprovacoes()">Voltar ao painel</button>
   </div>
@@ -244,8 +296,8 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 
   <div class="container">
     <div class="tabs" id="nav-paginas">
-      <button class="tab-btn active" data-pagina="dashboard" onclick="trocarPaginaPrincipal('dashboard')">📊 Dashboard</button>
-      <button class="tab-btn" data-pagina="explorar" onclick="trocarPaginaPrincipal('explorar')">🔍 Explorar Dados</button>
+      <button class="tab-btn active" data-pagina="dashboard" onclick="trocarPaginaPrincipal('dashboard')"><svg class="icon"><use href="#ic-activity"></use></svg> Dashboard</button>
+      <button class="tab-btn" data-pagina="explorar" onclick="trocarPaginaPrincipal('explorar')"><svg class="icon"><use href="#ic-search"></use></svg> Explorar Dados</button>
     </div>
 
     <div class="page active" id="pagina-dashboard">
@@ -488,8 +540,8 @@ function trocarPaginaPrincipal(pagina) {
 
 const ESQUELETO_DASHBOARD = `
   <div class="subtabs" id="dashboard-subtabs">
-    <button class="subtab-btn active" data-tipo="alarme" onclick="trocarDashboardTipo('alarme')">🔔 Alarmes</button>
-    <button class="subtab-btn" data-tipo="bypass" onclick="trocarDashboardTipo('bypass')">⚠️ Bypass</button>
+    <button class="subtab-btn active" data-tipo="alarme" onclick="trocarDashboardTipo('alarme')"><svg class="icon"><use href="#ic-bell"></use></svg> Alarmes</button>
+    <button class="subtab-btn" data-tipo="bypass" onclick="trocarDashboardTipo('bypass')"><svg class="icon"><use href="#ic-alert"></use></svg> Bypass</button>
   </div>
 
   <div id="dashboard-alarme">
@@ -501,27 +553,27 @@ const ESQUELETO_DASHBOARD = `
     <div class="kpi-grid" id="kpi-grid-alarme"></div>
     <div class="charts-grid">
       <div class="chart-card">
-        <h3>📈 Alarmes por mês (nº de atuações)</h3>
+        <h3><svg class="icon"><use href="#ic-bars"></use></svg> Alarmes por mês (nº de atuações)</h3>
         <div class="grafico-wrap"><canvas id="grafico-alarmes-mes"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>🥧 Status das atuações de alarme</h3>
+        <h3><svg class="icon"><use href="#ic-pie"></use></svg> Status das atuações de alarme</h3>
         <div class="grafico-wrap"><canvas id="grafico-status-alarme"></canvas></div>
       </div>
     </div>
     <div class="charts-grid" style="grid-template-columns:1fr">
       <div class="chart-card">
-        <h3>🏆 Top 10 alarmes mais atuados</h3>
+        <h3><svg class="icon"><use href="#ic-award"></use></svg> Top 10 alarmes mais atuados</h3>
         <div class="grafico-wrap"><canvas id="grafico-top-alarmes"></canvas></div>
       </div>
     </div>
-    <div class="chart-card">
-      <div class="section-title">🔔 Alarmes ainda ativos <span class="badge badge-ativo" id="contagem-alarmes-ativos"></span></div>
+    <div class="chart-card prioridade">
+      <div class="section-title"><svg class="icon"><use href="#ic-bell"></use></svg> Alarmes ainda ativos <span class="badge badge-ativo" id="contagem-alarmes-ativos"></span></div>
       <div class="alerta-lista" id="lista-alarmes-ativos"></div>
     </div>
 
     <div class="chart-card">
-      <div class="section-title">🔎 Filtros</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros</div>
       <div class="filtros">
         <div>
           <label>Plataforma</label>
@@ -547,11 +599,11 @@ const ESQUELETO_DASHBOARD = `
     </div>
     <div class="charts-grid">
       <div class="chart-card">
-        <h3>📍 Alarmes por plataforma (visão geral, todos os períodos)</h3>
+        <h3><svg class="icon"><use href="#ic-pin"></use></svg> Alarmes por plataforma (visão geral, todos os períodos)</h3>
         <div class="grafico-wrap"><canvas id="grafico-alarmes-plataforma"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>🧪 Alarmes por categoria (visão geral, todos os períodos)</h3>
+        <h3><svg class="icon"><use href="#ic-layers"></use></svg> Alarmes por categoria (visão geral, todos os períodos)</h3>
         <div class="grafico-wrap"><canvas id="grafico-alarmes-categoria"></canvas></div>
       </div>
     </div>
@@ -564,7 +616,7 @@ const ESQUELETO_DASHBOARD = `
     </div>
 
     <div class="chart-card">
-      <div class="section-title">📅 Período analisado (considera o mês em que o bypass foi ativado)</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-calendar"></use></svg> Período analisado (considera o mês em que o bypass foi ativado)</div>
       <div class="subtabs" id="bypass-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoBypass('tudo')">Tudo</button>
         <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoBypass('mes')">Este mês</button>
@@ -584,14 +636,14 @@ const ESQUELETO_DASHBOARD = `
     </div>
 
     <div class="kpi-grid" id="kpi-grid-bypass"></div>
-    <div class="chart-card">
-      <div class="section-title">🚨 Bypasses com mais de 120 dias ativos <span class="badge badge-ativo" id="contagem-bypass-criticos"></span></div>
+    <div class="chart-card prioridade nivel-atencao-bypass">
+      <div class="section-title"><svg class="icon"><use href="#ic-alert"></use></svg> Bypasses com mais de 120 dias ativos <span class="badge badge-ativo" id="contagem-bypass-criticos"></span></div>
       <div class="nota-dashboard" style="margin-bottom:10px">Limite de atenção: 180 dias ativo. Ordenado do mais próximo do limite para o mais distante.</div>
       <div class="alerta-lista" id="lista-bypass-criticos"></div>
     </div>
 
     <div class="chart-card">
-      <div class="section-title">📝 Justificativas de Bypass</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-edit"></use></svg> Justificativas de Bypass</div>
       <div class="nota-dashboard">
         Uma tag só tem UMA justificativa - se já existir, ela é carregada abaixo
         para edição em vez de criar outra.
@@ -613,16 +665,16 @@ const ESQUELETO_DASHBOARD = `
 
     <div class="charts-grid">
       <div class="chart-card">
-        <h3>📈 Bypass por mês (nº de ativações)</h3>
+        <h3><svg class="icon"><use href="#ic-bars"></use></svg> Bypass por mês (nº de ativações)</h3>
         <div class="grafico-wrap"><canvas id="grafico-bypass-mes"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>👤 Ativações de bypass por operador</h3>
+        <h3><svg class="icon"><use href="#ic-user"></use></svg> Ativações de bypass por operador</h3>
         <div class="grafico-wrap"><canvas id="grafico-top-operadores"></canvas></div>
       </div>
     </div>
-    <div class="chart-card">
-      <div class="section-title">⚠️ Bypasses ainda ativos <span class="badge badge-ativo" id="contagem-bypass-ativos"></span></div>
+    <div class="chart-card prioridade">
+      <div class="section-title"><svg class="icon"><use href="#ic-alert"></use></svg> Bypasses ainda ativos <span class="badge badge-ativo" id="contagem-bypass-ativos"></span></div>
       <div class="alerta-lista" id="lista-bypass-ativos"></div>
     </div>
   </div>
@@ -967,7 +1019,7 @@ function renderizarBypassCriticos() {
           <div class="alerta-critico-dias">${dias} dias · ${situacao}</div>
         </div>
         <div class="progresso-bar"><div class="progresso-fill ${nivel}" style="width:${pct}%"></div></div>
-        <button class="btn" style="align-self:flex-start; padding:4px 10px; font-size:0.72rem; background:var(--accent-dim); color:#fff" onclick="preencherJustificativa('${escapeHtml(s.tag)}')">📝 Justificar</button>
+        <button class="btn" style="align-self:flex-start; padding:4px 10px; font-size:0.72rem; background:var(--accent-dim); color:#fff" onclick="preencherJustificativa('${escapeHtml(s.tag)}')"><svg class="icon"><use href="#ic-edit"></use></svg> Justificar</button>
       </div>
     `;
   }).join('');
@@ -1049,7 +1101,7 @@ function renderizarListaJustificativas() {
         <div class="alerta-desc">atualizado em ${formatarData(j.atualizado_em)} · ${escapeHtml(j.autor_email || '—')}</div>
       </div>
       <div style="font-size:0.82rem; margin-bottom:8px">${escapeHtml(j.texto)}</div>
-      <button class="btn" style="padding:4px 10px; font-size:0.72rem; background:var(--accent-dim); color:#fff" onclick="preencherJustificativa('${escapeHtml(j.tag)}')">✏️ Editar</button>
+      <button class="btn" style="padding:4px 10px; font-size:0.72rem; background:var(--accent-dim); color:#fff" onclick="preencherJustificativa('${escapeHtml(j.tag)}')"><svg class="icon"><use href="#ic-edit"></use></svg> Editar</button>
     </div>
   `).join('');
 }
