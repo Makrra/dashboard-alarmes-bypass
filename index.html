@@ -166,10 +166,10 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 .kpi-card.destaque-red .kpi-valor { color: var(--red); }
 .kpi-card.destaque-yellow .kpi-valor { color: var(--yellow); }
 .kpi-card.destaque-green .kpi-valor { color: var(--green); }
-.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 .chart-card {
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px;
+  border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
 }
 /* Paineis operacionais (o que precisa de acao/atencao AGORA) recebem uma
    tarja lateral - hierarquia por forma, nao so por estar mais acima na
@@ -555,6 +555,7 @@ const ESQUELETO_DASHBOARD = `
       <div class="subtabs" id="alarme-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoAlarme('tudo')">Tudo</button>
         <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoAlarme('mes')">Este mês</button>
+        <button class="subtab-btn" data-filtro="mes-passado" onclick="trocarPeriodoAlarme('mes-passado')">Mês passado</button>
         <button class="subtab-btn" data-filtro="personalizado" onclick="trocarPeriodoAlarme('personalizado')">Personalizado</button>
       </div>
       <div id="alarme-periodo-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px">
@@ -640,6 +641,7 @@ const ESQUELETO_DASHBOARD = `
       <div class="subtabs" id="bypass-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoBypass('tudo')">Tudo</button>
         <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoBypass('mes')">Este mês</button>
+        <button class="subtab-btn" data-filtro="mes-passado" onclick="trocarPeriodoBypass('mes-passado')">Mês passado</button>
         <button class="subtab-btn" data-filtro="personalizado" onclick="trocarPeriodoBypass('personalizado')">Personalizado</button>
       </div>
       <div id="bypass-periodo-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px">
@@ -738,14 +740,25 @@ function alarmeNaCategoria(item) {
   return estadoDashboard.categoriaAlarme === 'tudo' || item.categoria === estadoDashboard.categoriaAlarme;
 }
 
+function mesAtualStr() {
+  const agora = new Date();
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function mesPassadoStr() {
+  const agora = new Date();
+  let ano = agora.getFullYear();
+  let mes = agora.getMonth(); // 0-indexado: mes atual - 1 = mes passado
+  mes -= 1;
+  if (mes < 0) { mes = 11; ano -= 1; }
+  return `${ano}-${String(mes + 1).padStart(2, '0')}`;
+}
+
 function mesNoPeriodoAlarme(mesReferencia) {
   const tipo = estadoDashboard.periodoAlarme.tipo;
   if (tipo === 'tudo') return true;
-  if (tipo === 'mes') {
-    const agora = new Date();
-    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
-    return mesReferencia === mesAtual;
-  }
+  if (tipo === 'mes') return mesReferencia === mesAtualStr();
+  if (tipo === 'mes-passado') return mesReferencia === mesPassadoStr();
   const de = document.getElementById('alarme-periodo-de').value;
   const ate = document.getElementById('alarme-periodo-ate').value;
   if (de && mesReferencia < de.slice(0, 7)) return false;
@@ -833,11 +846,8 @@ function desenharGraficoCategoriasAlarme() {
 function mesNoPeriodo(mesReferencia) {
   const tipo = estadoDashboard.periodoBypass.tipo;
   if (tipo === 'tudo') return true;
-  if (tipo === 'mes') {
-    const agora = new Date();
-    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
-    return mesReferencia === mesAtual;
-  }
+  if (tipo === 'mes') return mesReferencia === mesAtualStr();
+  if (tipo === 'mes-passado') return mesReferencia === mesPassadoStr();
   const de = document.getElementById('bypass-periodo-de').value;
   const ate = document.getElementById('bypass-periodo-ate').value;
   if (de && mesReferencia < de.slice(0, 7)) return false;
