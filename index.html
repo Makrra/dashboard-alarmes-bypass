@@ -591,6 +591,25 @@ const ESQUELETO_DASHBOARD = `
           </select>
         </div>
       </div>
+      <div style="margin-top:14px">
+        <label class="form-label" style="display:block; margin-bottom:6px">Período (mês em que o alarme atuou)</label>
+        <div class="subtabs" id="alarme-periodo-filtros">
+          <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoAlarme('tudo')">Tudo</button>
+          <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoAlarme('mes')">Este mês</button>
+          <button class="subtab-btn" data-filtro="personalizado" onclick="trocarPeriodoAlarme('personalizado')">Personalizado</button>
+        </div>
+        <div id="alarme-periodo-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px">
+          <div>
+            <label class="form-label">De</label>
+            <input class="form-control" type="date" id="alarme-periodo-de">
+          </div>
+          <div>
+            <label class="form-label">Até</label>
+            <input class="form-control" type="date" id="alarme-periodo-ate">
+          </div>
+          <button class="btn btn-primary" onclick="atualizarAlarmeFiltrado()">Aplicar</button>
+        </div>
+      </div>
       <div class="nota-dashboard" style="margin-top:10px">
         Plataforma e categoria são detectadas a partir da tag/descrição do alarme
         (não existem no dado bruto do SCADA). O que não bate com nenhum padrão
@@ -685,6 +704,7 @@ const estadoDashboard = {
   tipo: 'alarme',
   desenhados: { alarme: false, bypass: false },
   periodoBypass: { tipo: 'tudo' },
+  periodoAlarme: { tipo: 'tudo' },
   plataformaAlarme: 'tudo',
   categoriaAlarme: 'tudo',
 };
@@ -717,8 +737,23 @@ function alarmeNaCategoria(item) {
   return estadoDashboard.categoriaAlarme === 'tudo' || item.categoria === estadoDashboard.categoriaAlarme;
 }
 
+function mesNoPeriodoAlarme(mesReferencia) {
+  const tipo = estadoDashboard.periodoAlarme.tipo;
+  if (tipo === 'tudo') return true;
+  if (tipo === 'mes') {
+    const agora = new Date();
+    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    return mesReferencia === mesAtual;
+  }
+  const de = document.getElementById('alarme-periodo-de').value;
+  const ate = document.getElementById('alarme-periodo-ate').value;
+  if (de && mesReferencia < de.slice(0, 7)) return false;
+  if (ate && mesReferencia > ate.slice(0, 7)) return false;
+  return true;
+}
+
 function passaFiltrosAlarme(item) {
-  return alarmeNaPlataforma(item) && alarmeNaCategoria(item);
+  return alarmeNaPlataforma(item) && alarmeNaCategoria(item) && mesNoPeriodoAlarme(item.mes_referencia);
 }
 
 function popularFiltroPlataforma() {
@@ -740,6 +775,13 @@ function trocarPlataformaAlarme() {
 
 function trocarCategoriaAlarme() {
   estadoDashboard.categoriaAlarme = document.getElementById('alarme-categoria-filtro').value;
+  atualizarAlarmeFiltrado();
+}
+
+function trocarPeriodoAlarme(tipo) {
+  estadoDashboard.periodoAlarme.tipo = tipo;
+  document.querySelectorAll('#alarme-periodo-filtros .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === tipo));
+  document.getElementById('alarme-periodo-datas').style.display = tipo === 'personalizado' ? 'flex' : 'none';
   atualizarAlarmeFiltrado();
 }
 
@@ -907,6 +949,7 @@ async function carregarDashboard() {
   estadoDashboard.tipo = 'alarme';
   estadoDashboard.desenhados = { alarme: false, bypass: false };
   estadoDashboard.periodoBypass = { tipo: 'tudo' };
+  estadoDashboard.periodoAlarme = { tipo: 'tudo' };
   estadoDashboard.plataformaAlarme = 'tudo';
   estadoDashboard.categoriaAlarme = 'tudo';
   document.getElementById('alarme-categoria-filtro').value = 'tudo';
