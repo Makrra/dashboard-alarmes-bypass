@@ -1346,7 +1346,14 @@ function filtrar(lista) {
     }
     if (status) {
       if (item.status !== undefined) {
-        if (item.status !== status) return false;
+        // "Encerrado" cobre qualquer desfecho fechado, inclusive
+        // "Encerrado (selado no reconhecimento)" - so "ATIVO (em aberto)"
+        // e um status exato e distinto.
+        if (status === 'Encerrado') {
+          if (item.status === 'ATIVO (em aberto)') return false;
+        } else if (item.status !== status) {
+          return false;
+        }
       } else if (item.qtd_ainda_ativo !== undefined) {
         const ativo = item.qtd_ainda_ativo > 0;
         if (status === 'ATIVO (em aberto)' && !ativo) return false;

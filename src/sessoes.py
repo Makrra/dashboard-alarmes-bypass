@@ -19,7 +19,25 @@ def sessoes_de_sinais(sinais):
 
     Retorna lista de sessoes (sem o campo "chave"):
         {inicio, operador_abertura, fim, operador_fechamento,
-         ack_em, operador_ack, status: "Encerrado" | "ATIVO (em aberto)"}
+         ack_em, operador_ack,
+         status: "Encerrado" | "Encerrado (selado no reconhecimento)" | "ATIVO (em aberto)"}
+
+    Tratamento de "selamento no reconhecimento": no SCADA da plataforma, o
+    reconhecimento (ACK) de um alarme normalmente ja e o proprio tratamento
+    fisico que resolve a condicao - so que o sinal explicito de "retornou ao
+    normal" (OFF/ACK_RTN) individual de cada tag nem sempre chega depois,
+    principalmente quando varias tags sao reconhecidas de uma vez so (ex:
+    "reconhecer tudo" no SCADA, ou reconexao apos perda de comunicacao). Sem
+    esse tratamento, a sessao ficaria "ATIVO (em aberto)" indefinidamente
+    (as vezes centenas de dias) mesmo quando o alarme ja foi resolvido.
+
+    Regra aplicada: uma vez que o alarme foi reconhecido (ack_em setado), ele
+    e considerado selado/resolvido naquele instante. Se depois disso vier um
+    OFF de verdade, ele ainda fecha a sessao normalmente (o desfecho "real"
+    tem prioridade). Mas se em vez disso vier um novo ON (nova atuacao) ou o
+    periodo analisado terminar sem nenhum OFF, a sessao e fechada retroativa
+    mente no momento do proprio ACK, em vez de ficar aberta esperando um
+    sinal que pode nunca chegar.
     """
     sinais = sorted(sinais, key=lambda s: s[0])
 
@@ -30,9 +48,28 @@ def sessoes_de_sinais(sinais):
     oper_ack = None
     sessoes = []
 
+    def fechar(fim, operador_fechamento, status):
+        sessoes.append({
+            "inicio": dt_abertura,
+            "operador_abertura": oper_abertura,
+            "fim": fim,
+            "operador_fechamento": operador_fechamento,
+            "ack_em": ack_em,
+            "operador_ack": oper_ack,
+            "status": status,
+        })
+
     for dt, sinal, operador in sinais:
         if sinal == "ON" and estado_atual == "INATIVO":
             estado_atual = "ATIVO"
+            dt_abertura = dt
+            oper_abertura = operador
+            ack_em = None
+            oper_ack = None
+        elif sinal == "ON" and estado_atual == "ATIVO" and ack_em is not None:
+            # Ja tinha sido reconhecido (selado) antes desse novo disparo -
+            # isso e uma ocorrencia nova, nao uma reconfirmacao da mesma.
+            fechar(ack_em, oper_ack, "Encerrado (selado no reconhecimento)")
             dt_abertura = dt
             oper_abertura = operador
             ack_em = None
@@ -41,33 +78,28 @@ def sessoes_de_sinais(sinais):
             ack_em = dt
             oper_ack = operador
         elif sinal == "OFF" and estado_atual == "ATIVO":
-            sessoes.append({
-                "inicio": dt_abertura,
-                "operador_abertura": oper_abertura,
-                "fim": dt,
-                "operador_fechamento": operador,
-                "ack_em": ack_em,
-                "operador_ack": oper_ack,
-                "status": "Encerrado",
-            })
+            fechar(dt, operador, "Encerrado")
             estado_atual = "INATIVO"
             dt_abertura = None
             oper_abertura = None
             ack_em = None
             oper_ack = None
-        # ON com estado ja ATIVO = reconfirmacao, ignora.
+        # ON com estado ja ATIVO e ainda nao reconhecido = reconfirmacao, ignora.
         # OFF/ACK com estado ja INATIVO = sinal espurio, ignora.
 
     if estado_atual == "ATIVO" and dt_abertura is not None:
-        sessoes.append({
-            "inicio": dt_abertura,
-            "operador_abertura": oper_abertura,
-            "fim": None,
-            "operador_fechamento": None,
-            "ack_em": ack_em,
-            "operador_ack": oper_ack,
-            "status": "ATIVO (em aberto)",
-        })
+        if ack_em is not None:
+            fechar(ack_em, oper_ack, "Encerrado (selado no reconhecimento)")
+        else:
+            sessoes.append({
+                "inicio": dt_abertura,
+                "operador_abertura": oper_abertura,
+                "fim": None,
+                "operador_fechamento": None,
+                "ack_em": ack_em,
+                "operador_ack": oper_ack,
+                "status": "ATIVO (em aberto)",
+            })
 
     return sessoes
 

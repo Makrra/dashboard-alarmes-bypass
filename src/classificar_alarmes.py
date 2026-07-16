@@ -104,7 +104,7 @@ def contagem_status(sessoes):
     graficos de pizza/distribuicao: Reconhecido e encerrado / Retornou
     sozinho (sem reconhecimento) / Ainda ativo (em aberto)."""
     ainda_ativo = sum(1 for s in sessoes if s["status"] == "ATIVO (em aberto)")
-    encerrados = [s for s in sessoes if s["status"] == "Encerrado"]
+    encerrados = [s for s in sessoes if s["status"] != "ATIVO (em aberto)"]
     reconhecidos = sum(1 for s in encerrados if s["ack_em"] is not None)
     sozinho = sum(1 for s in encerrados if s["ack_em"] is None)
     return {"reconhecidos": reconhecidos, "sozinho": sozinho, "ainda_ativo": ainda_ativo}
