@@ -201,6 +201,33 @@ def gravar_em_lotes(db, colecao, docs_por_id):
         lote.commit()
 
 
+def limpar_orfaos(db, colecao, meses_alvo, ids_validos):
+    """Remove documentos cujo mes_referencia esteja no escopo desta execucao
+    mas que nao fazem mais parte da classificacao atual - acontece quando a
+    fronteira/inicio de uma sessao muda entre execucoes (ex: mudanca na
+    logica de classificacao, ou reclassificacao com mais historico do que a
+    primeira carga tinha), deixando o documento antigo como orfao pra sempre
+    (o script so faz set/upsert, nunca apagava sozinho)."""
+    apagados = 0
+    ref_colecao = db.collection(colecao)
+    for mes in meses_alvo:
+        existentes = ref_colecao.where("mes_referencia", "==", mes).stream()
+        lote = db.batch()
+        pendentes = 0
+        for doc in existentes:
+            if doc.id not in ids_validos:
+                lote.delete(doc.reference)
+                pendentes += 1
+                apagados += 1
+                if pendentes >= TAMANHO_LOTE:
+                    lote.commit()
+                    lote = db.batch()
+                    pendentes = 0
+        if pendentes:
+            lote.commit()
+    return apagados
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Envia sessoes e resumos de Alarmes/Bypass para o Firestore."
@@ -292,6 +319,14 @@ def main():
     print(f"  resumos_alarme: {len(docs_resumo_alarme)} documento(s)")
     gravar_em_lotes(db, "resumos_bypass", docs_resumo_bypass)
     print(f"  resumos_bypass: {len(docs_resumo_bypass)} documento(s)")
+
+    print("\nLimpando documentos orfaos (sessoes que mudaram de fronteira entre execucoes)...")
+    apagados = 0
+    apagados += limpar_orfaos(db, "sessoes_alarme", meses, set(docs_sessoes_alarme.keys()))
+    apagados += limpar_orfaos(db, "sessoes_bypass", meses, set(docs_sessoes_bypass.keys()))
+    apagados += limpar_orfaos(db, "resumos_alarme", meses, set(docs_resumo_alarme.keys()))
+    apagados += limpar_orfaos(db, "resumos_bypass", meses, set(docs_resumo_bypass.keys()))
+    print(f"  {apagados} documento(s) orfao(s) removido(s).")
 
     from firebase_admin import firestore
     db.collection("metadados").document("periodos").set(
