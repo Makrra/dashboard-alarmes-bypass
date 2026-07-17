@@ -233,6 +233,8 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
     <symbol id="ic-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
     <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
     <symbol id="ic-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+    <symbol id="ic-toggle" viewBox="0 0 24 24"><rect x="1" y="5" width="22" height="14" rx="7" ry="7"/><circle cx="16" cy="12" r="3"/></symbol>
+    <symbol id="ic-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
   </defs>
 </svg>
 
@@ -375,6 +377,9 @@ const estado = {
   todosResumoBypass: [],
   ativosAlarme: [],
   ativosBypass: [],
+  todosResumoOverride: [],
+  ativosOverride: [],
+  todosResumoEventos: [],
 };
 
 // ---------- AUTENTICAÇÃO ----------
@@ -542,6 +547,8 @@ const ESQUELETO_DASHBOARD = `
   <div class="subtabs" id="dashboard-subtabs">
     <button class="subtab-btn active" data-tipo="alarme" onclick="trocarDashboardTipo('alarme')"><svg class="icon"><use href="#ic-bell"></use></svg> Alarmes</button>
     <button class="subtab-btn" data-tipo="bypass" onclick="trocarDashboardTipo('bypass')"><svg class="icon"><use href="#ic-alert"></use></svg> Bypass</button>
+    <button class="subtab-btn" data-tipo="override" onclick="trocarDashboardTipo('override')"><svg class="icon"><use href="#ic-toggle"></use></svg> Overrides</button>
+    <button class="subtab-btn" data-tipo="eventos" onclick="trocarDashboardTipo('eventos')"><svg class="icon"><use href="#ic-list"></use></svg> Eventos</button>
   </div>
 
   <div id="dashboard-alarme">
@@ -551,7 +558,8 @@ const ESQUELETO_DASHBOARD = `
     </div>
 
     <div class="chart-card">
-      <div class="section-title"><svg class="icon"><use href="#ic-calendar"></use></svg> Período analisado (considera o mês em que o alarme atuou)</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros (afetam tudo abaixo)</div>
+      <label class="form-label" style="display:block; margin-bottom:6px">Período (mês em que o alarme atuou)</label>
       <div class="subtabs" id="alarme-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoAlarme('tudo')">Tudo</button>
         <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoAlarme('mes')">Este mês</button>
@@ -568,6 +576,30 @@ const ESQUELETO_DASHBOARD = `
           <input class="form-control" type="date" id="alarme-periodo-ate">
         </div>
         <button class="btn btn-primary" onclick="atualizarAlarmeFiltrado()">Aplicar</button>
+      </div>
+      <div class="filtros" style="margin-top:16px">
+        <div>
+          <label>Plataforma</label>
+          <select class="form-control" id="alarme-plataforma-filtro" onchange="trocarPlataformaAlarme()">
+            <option value="tudo">Todas as plataformas</option>
+          </select>
+        </div>
+        <div>
+          <label>Categoria</label>
+          <select class="form-control" id="alarme-categoria-filtro" onchange="trocarCategoriaAlarme()">
+            <option value="tudo">Todas as categorias</option>
+            <option value="Geral">Geral</option>
+            <option value="Detector de Gás">Detector de Gás</option>
+            <option value="ESD">ESD (Emergency Shutdown)</option>
+            <option value="Interlock">Interlock</option>
+          </select>
+        </div>
+      </div>
+      <div class="nota-dashboard" style="margin-top:10px">
+        Plataforma e categoria são detectadas a partir da tag/descrição do alarme
+        (não existem no dado bruto do SCADA). O que não bate com nenhum padrão
+        conhecido cai em "Não identificado" (plataforma) ou "Geral" (categoria).
+        Overrides e comandos ganharam abas próprias e não entram mais aqui.
       </div>
     </div>
 
@@ -591,32 +623,6 @@ const ESQUELETO_DASHBOARD = `
     <div class="chart-card prioridade">
       <div class="section-title"><svg class="icon"><use href="#ic-bell"></use></svg> Alarmes ainda ativos <span class="badge badge-ativo" id="contagem-alarmes-ativos"></span></div>
       <div class="alerta-lista" id="lista-alarmes-ativos"></div>
-    </div>
-
-    <div class="chart-card">
-      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros</div>
-      <div class="filtros">
-        <div>
-          <label>Plataforma</label>
-          <select class="form-control" id="alarme-plataforma-filtro" onchange="trocarPlataformaAlarme()">
-            <option value="tudo">Todas as plataformas</option>
-          </select>
-        </div>
-        <div>
-          <label>Categoria</label>
-          <select class="form-control" id="alarme-categoria-filtro" onchange="trocarCategoriaAlarme()">
-            <option value="tudo">Todas as categorias</option>
-            <option value="Geral">Geral</option>
-            <option value="Detector de Gás">Detector de Gás</option>
-            <option value="ESD">ESD (Emergency Shutdown)</option>
-          </select>
-        </div>
-      </div>
-      <div class="nota-dashboard" style="margin-top:10px">
-        Plataforma e categoria são detectadas a partir da tag/descrição do alarme
-        (não existem no dado bruto do SCADA). O que não bate com nenhum padrão
-        conhecido cai em "Não identificado" (plataforma) ou "Geral" (categoria).
-      </div>
     </div>
     <div class="charts-grid">
       <div class="chart-card">
@@ -700,16 +706,111 @@ const ESQUELETO_DASHBOARD = `
       <div class="alerta-lista" id="lista-bypass-ativos"></div>
     </div>
   </div>
+
+  <div id="dashboard-override" style="display:none">
+    <div class="nota-dashboard">
+      Override é o desvio manual de uma lógica de proteção/intertravamento
+      (nível 0 ou 1). Duração dos "ainda ativos" calculada no momento do
+      último envio de dados (não é atualizada em tempo real).
+    </div>
+
+    <div class="chart-card">
+      <div class="section-title"><svg class="icon"><use href="#ic-calendar"></use></svg> Período analisado (considera o mês em que o override foi ativado)</div>
+      <div class="subtabs" id="override-periodo-filtros">
+        <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoOverride('tudo')">Tudo</button>
+        <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoOverride('mes')">Este mês</button>
+        <button class="subtab-btn" data-filtro="mes-passado" onclick="trocarPeriodoOverride('mes-passado')">Mês passado</button>
+        <button class="subtab-btn" data-filtro="personalizado" onclick="trocarPeriodoOverride('personalizado')">Personalizado</button>
+      </div>
+      <div id="override-periodo-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px">
+        <div>
+          <label class="form-label">De</label>
+          <input class="form-control" type="date" id="override-periodo-de">
+        </div>
+        <div>
+          <label class="form-label">Até</label>
+          <input class="form-control" type="date" id="override-periodo-ate">
+        </div>
+        <button class="btn btn-primary" onclick="atualizarOverrideFiltrado()">Aplicar</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpi-grid-override"></div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3><svg class="icon"><use href="#ic-bars"></use></svg> Overrides por mês (nº de ativações)</h3>
+        <div class="grafico-wrap"><canvas id="grafico-override-mes"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3><svg class="icon"><use href="#ic-user"></use></svg> Ativações de override por operador</h3>
+        <div class="grafico-wrap"><canvas id="grafico-override-operadores"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-card prioridade">
+      <div class="section-title"><svg class="icon"><use href="#ic-toggle"></use></svg> Overrides ainda ativos <span class="badge badge-ativo" id="contagem-override-ativos"></span></div>
+      <div class="alerta-lista" id="lista-override-ativos"></div>
+    </div>
+  </div>
+
+  <div id="dashboard-eventos" style="display:none">
+    <div class="nota-dashboard">
+      Ações registradas do operador: login no console, reconhecimento de
+      alarmes (de qualquer tipo/tag) e comandos diretos.
+    </div>
+
+    <div class="chart-card">
+      <div class="section-title"><svg class="icon"><use href="#ic-calendar"></use></svg> Período analisado</div>
+      <div class="subtabs" id="eventos-periodo-filtros">
+        <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoEventos('tudo')">Tudo</button>
+        <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoEventos('mes')">Este mês</button>
+        <button class="subtab-btn" data-filtro="mes-passado" onclick="trocarPeriodoEventos('mes-passado')">Mês passado</button>
+        <button class="subtab-btn" data-filtro="personalizado" onclick="trocarPeriodoEventos('personalizado')">Personalizado</button>
+      </div>
+      <div id="eventos-periodo-datas" style="display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px">
+        <div>
+          <label class="form-label">De</label>
+          <input class="form-control" type="date" id="eventos-periodo-de">
+        </div>
+        <div>
+          <label class="form-label">Até</label>
+          <input class="form-control" type="date" id="eventos-periodo-ate">
+        </div>
+        <button class="btn btn-primary" onclick="atualizarEventosFiltrado()">Aplicar</button>
+      </div>
+      <div class="filtros" style="margin-top:16px">
+        <div>
+          <label>Tipo de ação</label>
+          <select class="form-control" id="eventos-tipo-filtro" onchange="trocarTipoEventos()">
+            <option value="tudo">Todas</option>
+            <option value="Login">Login</option>
+            <option value="Reconhecimento">Reconhecimento</option>
+            <option value="Comando">Comando</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpi-grid-eventos"></div>
+    <div class="charts-grid" style="grid-template-columns:1fr">
+      <div class="chart-card">
+        <h3><svg class="icon"><use href="#ic-user"></use></svg> Ações por operador</h3>
+        <div class="grafico-wrap"><canvas id="grafico-eventos-operador"></canvas></div>
+      </div>
+    </div>
+  </div>
 `;
 
 const graficos = {};
 const estadoDashboard = {
   tipo: 'alarme',
-  desenhados: { alarme: false, bypass: false },
+  desenhados: { alarme: false, bypass: false, override: false, eventos: false },
   periodoBypass: { tipo: 'tudo' },
   periodoAlarme: { tipo: 'tudo' },
+  periodoOverride: { tipo: 'tudo' },
+  periodoEventos: { tipo: 'tudo' },
   plataformaAlarme: 'tudo',
   categoriaAlarme: 'tudo',
+  tipoEventos: 'tudo',
 };
 
 // Deteccao de plataforma via texto da descricao do alarme (ex: "PAL - PPE-1A -
@@ -729,6 +830,7 @@ function identificarPlataforma(descricao) {
 function identificarCategoria(tag, descricao) {
   if (/_(GAH|GAHH|GAL|GALL|GAFF)_/i.test(tag)) return 'Detector de Gás';
   if (/ESD/i.test(`${tag} ${descricao || ''}`)) return 'ESD';
+  if (/_ILK_/i.test(tag)) return 'Interlock';
   return 'Geral';
 }
 
@@ -872,20 +974,174 @@ function atualizarBypassFiltrado() {
   estadoDashboard.desenhados.bypass = true;
 }
 
+// ---------- OVERRIDE ----------
+
+function mesNoPeriodoOverride(mesReferencia) {
+  const tipo = estadoDashboard.periodoOverride.tipo;
+  if (tipo === 'tudo') return true;
+  if (tipo === 'mes') return mesReferencia === mesAtualStr();
+  if (tipo === 'mes-passado') return mesReferencia === mesPassadoStr();
+  const de = document.getElementById('override-periodo-de').value;
+  const ate = document.getElementById('override-periodo-ate').value;
+  if (de && mesReferencia < de.slice(0, 7)) return false;
+  if (ate && mesReferencia > ate.slice(0, 7)) return false;
+  return true;
+}
+
+function trocarPeriodoOverride(tipo) {
+  estadoDashboard.periodoOverride.tipo = tipo;
+  document.querySelectorAll('#override-periodo-filtros .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === tipo));
+  document.getElementById('override-periodo-datas').style.display = tipo === 'personalizado' ? 'flex' : 'none';
+  atualizarOverrideFiltrado();
+}
+
+function atualizarOverrideFiltrado() {
+  renderizarKPIsOverride();
+  renderizarAlertaOverride();
+  if (graficos.overrideMes) { graficos.overrideMes.destroy(); delete graficos.overrideMes; }
+  if (graficos.overrideOperadores) { graficos.overrideOperadores.destroy(); delete graficos.overrideOperadores; }
+  desenharGraficosOverride();
+  estadoDashboard.desenhados.override = true;
+}
+
+function renderizarKPIsOverride() {
+  const resumoFiltrado = estado.todosResumoOverride.filter(r => mesNoPeriodoOverride(r.mes_referencia));
+  const ativosFiltrado = estado.ativosOverride.filter(s => mesNoPeriodoOverride(s.mes_referencia));
+  const totalOverride = resumoFiltrado.reduce((s, r) => s + r.qtd_ativacoes, 0);
+  const topOperadores = agruparOperadoresBypass(resumoFiltrado);
+  const operadorTop = topOperadores.length ? `${topOperadores[0][0]} (${topOperadores[0][1]}x)` : '—';
+
+  const kpis = [
+    { label: 'Overrides (total)', valor: totalOverride.toLocaleString('pt-BR') },
+    { label: 'Overrides ativos agora', valor: ativosFiltrado.length, destaque: ativosFiltrado.length ? 'yellow' : 'green' },
+    { label: 'Operador mais frequente', valor: operadorTop },
+  ];
+
+  document.getElementById('kpi-grid-override').innerHTML = kpis.map(k => `
+    <div class="kpi-card ${k.destaque ? 'destaque-' + k.destaque : ''}">
+      <div class="kpi-valor">${k.valor}</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>
+  `).join('');
+}
+
+function renderizarAlertaOverride() {
+  const ativosFiltrado = estado.ativosOverride.filter(s => mesNoPeriodoOverride(s.mes_referencia));
+  document.getElementById('contagem-override-ativos').textContent = ativosFiltrado.length;
+  document.getElementById('lista-override-ativos').innerHTML = ativosFiltrado.length
+    ? ativosFiltrado.slice().sort((a, b) => b.duracao_s - a.duracao_s).map(s => montarItemAlerta(s, 'bypass')).join('')
+    : '<div class="empty-state">Nenhum override ativo nesse período.</div>';
+}
+
+function desenharGraficosOverride() {
+  const resumoFiltrado = estado.todosResumoOverride.filter(r => mesNoPeriodoOverride(r.mes_referencia));
+  const porMes = agruparPorMes(resumoFiltrado, 'qtd_ativacoes');
+  graficos.overrideMes = new Chart(document.getElementById('grafico-override-mes'), {
+    type: 'bar',
+    data: { labels: porMes.map(m => m.mes), datasets: [{ data: porMes.map(m => m.valor), backgroundColor: '#2f9bc4', borderRadius: 6 }] },
+    options: opcoesBase(),
+  });
+
+  const topOperadores = agruparOperadoresBypass(resumoFiltrado);
+  graficos.overrideOperadores = new Chart(document.getElementById('grafico-override-operadores'), {
+    type: 'bar',
+    data: { labels: topOperadores.map(o => o[0]), datasets: [{ data: topOperadores.map(o => o[1]), backgroundColor: '#2f9bc4', borderRadius: 6 }] },
+    options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
+  });
+}
+
+// ---------- EVENTOS ----------
+
+function mesNoPeriodoEventos(mesReferencia) {
+  const tipo = estadoDashboard.periodoEventos.tipo;
+  if (tipo === 'tudo') return true;
+  if (tipo === 'mes') return mesReferencia === mesAtualStr();
+  if (tipo === 'mes-passado') return mesReferencia === mesPassadoStr();
+  const de = document.getElementById('eventos-periodo-de').value;
+  const ate = document.getElementById('eventos-periodo-ate').value;
+  if (de && mesReferencia < de.slice(0, 7)) return false;
+  if (ate && mesReferencia > ate.slice(0, 7)) return false;
+  return true;
+}
+
+function eventoPassaFiltro(r) {
+  return mesNoPeriodoEventos(r.mes_referencia) &&
+    (estadoDashboard.tipoEventos === 'tudo' || r.acao === estadoDashboard.tipoEventos);
+}
+
+function trocarPeriodoEventos(tipo) {
+  estadoDashboard.periodoEventos.tipo = tipo;
+  document.querySelectorAll('#eventos-periodo-filtros .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === tipo));
+  document.getElementById('eventos-periodo-datas').style.display = tipo === 'personalizado' ? 'flex' : 'none';
+  atualizarEventosFiltrado();
+}
+
+function trocarTipoEventos() {
+  estadoDashboard.tipoEventos = document.getElementById('eventos-tipo-filtro').value;
+  atualizarEventosFiltrado();
+}
+
+function atualizarEventosFiltrado() {
+  renderizarKPIsEventos();
+  if (graficos.eventosOperador) { graficos.eventosOperador.destroy(); delete graficos.eventosOperador; }
+  desenharGraficoEventos();
+  estadoDashboard.desenhados.eventos = true;
+}
+
+function renderizarKPIsEventos() {
+  const filtrado = estado.todosResumoEventos.filter(eventoPassaFiltro);
+  const total = filtrado.reduce((s, r) => s + r.quantidade, 0);
+  const porAcao = { Login: 0, Reconhecimento: 0, Comando: 0 };
+  filtrado.forEach(r => { porAcao[r.acao] = (porAcao[r.acao] || 0) + r.quantidade; });
+
+  const kpis = [
+    { label: 'Ações (total)', valor: total.toLocaleString('pt-BR') },
+    { label: 'Login', valor: porAcao.Login.toLocaleString('pt-BR') },
+    { label: 'Reconhecimento', valor: porAcao.Reconhecimento.toLocaleString('pt-BR') },
+    { label: 'Comando', valor: porAcao.Comando.toLocaleString('pt-BR') },
+  ];
+
+  document.getElementById('kpi-grid-eventos').innerHTML = kpis.map(k => `
+    <div class="kpi-card">
+      <div class="kpi-valor">${k.valor}</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>
+  `).join('');
+}
+
+function desenharGraficoEventos() {
+  const filtrado = estado.todosResumoEventos.filter(eventoPassaFiltro);
+  const mapa = {};
+  filtrado.forEach(r => { mapa[r.operador] = (mapa[r.operador] || 0) + r.quantidade; });
+  const dados = Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+  graficos.eventosOperador = new Chart(document.getElementById('grafico-eventos-operador'), {
+    type: 'bar',
+    data: { labels: dados.map(d => d[0]), datasets: [{ data: dados.map(d => d[1]), backgroundColor: '#2f9bc4', borderRadius: 6 }] },
+    options: Object.assign(opcoesBase(), { indexAxis: 'y' }),
+  });
+}
+
 function trocarDashboardTipo(tipo) {
   estadoDashboard.tipo = tipo;
   document.querySelectorAll('#dashboard-subtabs .subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
   document.getElementById('dashboard-alarme').style.display = tipo === 'alarme' ? 'block' : 'none';
   document.getElementById('dashboard-bypass').style.display = tipo === 'bypass' ? 'block' : 'none';
+  document.getElementById('dashboard-override').style.display = tipo === 'override' ? 'block' : 'none';
+  document.getElementById('dashboard-eventos').style.display = tipo === 'eventos' ? 'block' : 'none';
   if (!estadoDashboard.desenhados[tipo]) {
     estadoDashboard.desenhados[tipo] = true;
     if (tipo === 'alarme') {
       desenharGraficoPlataformasAlarme();
       desenharGraficoCategoriasAlarme();
       desenharGraficosAlarme();
-    } else {
+    } else if (tipo === 'bypass') {
       desenharGraficosBypass();
       carregarJustificativas();
+    } else if (tipo === 'override') {
+      desenharGraficosOverride();
+    } else if (tipo === 'eventos') {
+      desenharGraficoEventos();
     }
   }
 }
@@ -930,16 +1186,22 @@ function agruparOperadoresBypass(lista) {
 
 async function carregarDashboard() {
   const alvo = document.getElementById('dashboard-conteudo');
-  const [ra, rb, aa, ab] = await Promise.all([
+  const [ra, rb, aa, ab, ro, ao, re] = await Promise.all([
     db.collection('resumos_alarme').get(),
     db.collection('resumos_bypass').get(),
     db.collection('sessoes_alarme').where('status', '==', 'ATIVO (em aberto)').get(),
     db.collection('sessoes_bypass').where('status', '==', 'ATIVO (em aberto)').get(),
+    db.collection('resumos_override').get(),
+    db.collection('sessoes_override').where('status', '==', 'ATIVO (em aberto)').get(),
+    db.collection('resumos_eventos').get(),
   ]);
   estado.todosResumoAlarme = ra.docs.map(d => d.data());
   estado.todosResumoBypass = rb.docs.map(d => d.data());
   estado.ativosAlarme = aa.docs.map(d => d.data());
   estado.ativosBypass = ab.docs.map(d => d.data());
+  estado.todosResumoOverride = ro.docs.map(d => d.data());
+  estado.ativosOverride = ao.docs.map(d => d.data());
+  estado.todosResumoEventos = re.docs.map(d => d.data());
 
   estado.todosResumoAlarme.forEach(r => {
     r.plataforma = identificarPlataforma(r.descricao);
@@ -958,18 +1220,25 @@ async function carregarDashboard() {
   Object.keys(graficos).forEach(id => { graficos[id].destroy(); delete graficos[id]; });
   alvo.innerHTML = ESQUELETO_DASHBOARD;
   estadoDashboard.tipo = 'alarme';
-  estadoDashboard.desenhados = { alarme: false, bypass: false };
+  estadoDashboard.desenhados = { alarme: false, bypass: false, override: false, eventos: false };
   estadoDashboard.periodoBypass = { tipo: 'tudo' };
   estadoDashboard.periodoAlarme = { tipo: 'tudo' };
+  estadoDashboard.periodoOverride = { tipo: 'tudo' };
+  estadoDashboard.periodoEventos = { tipo: 'tudo' };
   estadoDashboard.plataformaAlarme = 'tudo';
   estadoDashboard.categoriaAlarme = 'tudo';
+  estadoDashboard.tipoEventos = 'tudo';
   document.getElementById('alarme-categoria-filtro').value = 'tudo';
+  document.getElementById('eventos-tipo-filtro').value = 'tudo';
   popularFiltroPlataforma();
   renderizarKPIsAlarme();
   renderizarKPIsBypass();
+  renderizarKPIsOverride();
+  renderizarKPIsEventos();
   renderizarAlertaAlarme();
   renderizarAlertaBypass();
   renderizarBypassCriticos();
+  renderizarAlertaOverride();
   desenharGraficoPlataformasAlarme();
   desenharGraficoCategoriasAlarme();
   desenharGraficosAlarme();

@@ -39,6 +39,18 @@ service cloud.firestore {
       allow read: if estaAutorizado();
       allow write: if false;
     }
+    match /sessoes_override/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+    match /resumos_override/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
+    match /resumos_eventos/{docId} {
+      allow read: if estaAutorizado();
+      allow write: if false;
+    }
     match /metadados/{docId} {
       allow read: if estaAutorizado();
       allow write: if false;

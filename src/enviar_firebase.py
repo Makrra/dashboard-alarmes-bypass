@@ -36,6 +36,8 @@ from zoneinfo import ZoneInfo
 from parser_alg import carregar_pasta
 import classificar_alarmes
 import classificar_bypass
+import classificar_override
+import classificar_eventos
 from sessoes import formatar_duracao
 
 
@@ -61,6 +63,11 @@ def id_resumo(mes_referencia, tag):
     return f"{mes_referencia}_{sufixo}"
 
 
+def id_evento(mes_referencia, operador, acao):
+    sufixo = hashlib.sha1(f"{operador}|{acao}".encode("utf-8")).hexdigest()[:16]
+    return f"{mes_referencia}_{sufixo}"
+
+
 def montar_doc_sessao_alarme(s):
     return {
         "tag": s["chave"],
@@ -81,6 +88,21 @@ def montar_doc_sessao_alarme(s):
 
 
 def montar_doc_sessao_bypass(s):
+    return {
+        "tag": s["chave"],
+        "descricao": s["descricao"],
+        "mes_referencia": s["mes_referencia"],
+        "inicio": localizar(s["inicio"]),
+        "fim": localizar(s["fim"]),
+        "operador_abertura": s["operador_abertura"] or None,
+        "operador_fechamento": s["operador_fechamento"] or None,
+        "status": s["status"],
+        "duracao_s": s["duracao_s"],
+        "duracao_fmt": s["duracao_fmt"],
+    }
+
+
+def montar_doc_sessao_override(s):
     return {
         "tag": s["chave"],
         "descricao": s["descricao"],
@@ -163,6 +185,37 @@ def recalcular_resumo_bypass_mensal(sessoes):
 
     for r in resumo.values():
         r["tempo_total_bypass_fmt"] = formatar_duracao(r["tempo_total_bypass_s"])
+        r["operadores_resumo"] = ", ".join(
+            f"{op} ({n}x)" for op, n in sorted(r["_operadores"].items(), key=lambda kv: -kv[1])
+        )
+        r["operadores"] = dict(r["_operadores"])
+        del r["_operadores"]
+
+    return list(resumo.values())
+
+
+def recalcular_resumo_override_mensal(sessoes):
+    resumo = {}
+    for s in sessoes:
+        chave_bucket = (s["mes_referencia"], s["chave"])
+        r = resumo.setdefault(chave_bucket, {
+            "mes_referencia": s["mes_referencia"],
+            "tag": s["chave"],
+            "descricao": s["descricao"],
+            "qtd_ativacoes": 0,
+            "qtd_ainda_ativo": 0,
+            "tempo_total_override_s": 0.0,
+            "_operadores": defaultdict(int),
+        })
+        r["qtd_ativacoes"] += 1
+        r["tempo_total_override_s"] += s["duracao_s"]
+        if s["status"] == "ATIVO (em aberto)":
+            r["qtd_ainda_ativo"] += 1
+        if s["operador_abertura"]:
+            r["_operadores"][s["operador_abertura"]] += 1
+
+    for r in resumo.values():
+        r["tempo_total_override_fmt"] = formatar_duracao(r["tempo_total_override_s"])
         r["operadores_resumo"] = ", ".join(
             f"{op} ({n}x)" for op, n in sorted(r["_operadores"].items(), key=lambda kv: -kv[1])
         )
@@ -259,34 +312,52 @@ def main():
     dt_fim = eventos[-1]["dt"]
     sessoes_alarmes, _, _ = classificar_alarmes.classificar(eventos, dt_fim)
     sessoes_bypass, _ = classificar_bypass.classificar(eventos, dt_fim)
+    sessoes_override, _ = classificar_override.classificar(eventos, dt_fim)
+    acoes_eventos = classificar_eventos.classificar(eventos)
 
     for s in sessoes_alarmes:
         s["mes_referencia"] = s["inicio"].strftime("%Y-%m")
     for s in sessoes_bypass:
         s["mes_referencia"] = s["inicio"].strftime("%Y-%m")
+    for s in sessoes_override:
+        s["mes_referencia"] = s["inicio"].strftime("%Y-%m")
 
     resumo_alarmes = recalcular_resumo_alarme_mensal(sessoes_alarmes)
     resumo_bypass = recalcular_resumo_bypass_mensal(sessoes_bypass)
+    resumo_override = recalcular_resumo_override_mensal(sessoes_override)
+    resumo_eventos = classificar_eventos.resumo_mensal(acoes_eventos)
 
     meses = sorted(
         {s["mes_referencia"] for s in sessoes_alarmes}
         | {s["mes_referencia"] for s in sessoes_bypass}
+        | {s["mes_referencia"] for s in sessoes_override}
+        | {r["mes_referencia"] for r in resumo_eventos}
     )
 
     print(f"\n  {len(sessoes_alarmes)} sessao(oes) de alarme.")
     print(f"  {len(sessoes_bypass)} sessao(oes) de bypass.")
+    print(f"  {len(sessoes_override)} sessao(oes) de override.")
+    print(f"  {len(acoes_eventos)} acao(oes) de operador (login/reconhecimento/comando).")
     print(f"  {len(resumo_alarmes)} resumo(s) mensal(is) de alarme (mes+tag).")
     print(f"  {len(resumo_bypass)} resumo(s) mensal(is) de bypass (mes+tag).")
+    print(f"  {len(resumo_override)} resumo(s) mensal(is) de override (mes+tag).")
+    print(f"  {len(resumo_eventos)} resumo(s) mensal(is) de eventos (mes+operador+acao).")
     print(f"  Meses cobertos (classificacao completa): {', '.join(meses)}")
 
     if args.apenas_meses:
         prefixo = args.apenas_meses
         sessoes_alarmes = [s for s in sessoes_alarmes if s["mes_referencia"].startswith(prefixo)]
         sessoes_bypass = [s for s in sessoes_bypass if s["mes_referencia"].startswith(prefixo)]
+        sessoes_override = [s for s in sessoes_override if s["mes_referencia"].startswith(prefixo)]
         resumo_alarmes = [r for r in resumo_alarmes if r["mes_referencia"].startswith(prefixo)]
         resumo_bypass = [r for r in resumo_bypass if r["mes_referencia"].startswith(prefixo)]
+        resumo_override = [r for r in resumo_override if r["mes_referencia"].startswith(prefixo)]
+        resumo_eventos = [r for r in resumo_eventos if r["mes_referencia"].startswith(prefixo)]
         meses = [m for m in meses if m.startswith(prefixo)]
-        total_docs = len(sessoes_alarmes) + len(sessoes_bypass) + len(resumo_alarmes) + len(resumo_bypass)
+        total_docs = (
+            len(sessoes_alarmes) + len(sessoes_bypass) + len(sessoes_override)
+            + len(resumo_alarmes) + len(resumo_bypass) + len(resumo_override) + len(resumo_eventos)
+        )
         print(f"\n  --apenas-meses={prefixo}: restrito a {len(meses)} mes(es), {total_docs} documento(s) a gravar.")
 
     if args.dry_run:
@@ -303,6 +374,16 @@ def main():
         id_sessao("bypass", s["chave"], s["inicio"]): montar_doc_sessao_bypass(s)
         for s in sessoes_bypass
     }
+    docs_sessoes_override = {
+        id_sessao("override", s["chave"], s["inicio"]): montar_doc_sessao_override(s)
+        for s in sessoes_override
+    }
+    docs_resumo_override = {
+        id_resumo(r["mes_referencia"], r["tag"]): r for r in resumo_override
+    }
+    docs_resumo_eventos = {
+        id_evento(r["mes_referencia"], r["operador"], r["acao"]): r for r in resumo_eventos
+    }
     docs_resumo_alarme = {
         id_resumo(r["mes_referencia"], r["tag"]): r for r in resumo_alarmes
     }
@@ -315,17 +396,26 @@ def main():
     print(f"  sessoes_alarme: {len(docs_sessoes_alarme)} documento(s)")
     gravar_em_lotes(db, "sessoes_bypass", docs_sessoes_bypass)
     print(f"  sessoes_bypass: {len(docs_sessoes_bypass)} documento(s)")
+    gravar_em_lotes(db, "sessoes_override", docs_sessoes_override)
+    print(f"  sessoes_override: {len(docs_sessoes_override)} documento(s)")
     gravar_em_lotes(db, "resumos_alarme", docs_resumo_alarme)
     print(f"  resumos_alarme: {len(docs_resumo_alarme)} documento(s)")
     gravar_em_lotes(db, "resumos_bypass", docs_resumo_bypass)
     print(f"  resumos_bypass: {len(docs_resumo_bypass)} documento(s)")
+    gravar_em_lotes(db, "resumos_override", docs_resumo_override)
+    print(f"  resumos_override: {len(docs_resumo_override)} documento(s)")
+    gravar_em_lotes(db, "resumos_eventos", docs_resumo_eventos)
+    print(f"  resumos_eventos: {len(docs_resumo_eventos)} documento(s)")
 
     print("\nLimpando documentos orfaos (sessoes que mudaram de fronteira entre execucoes)...")
     apagados = 0
     apagados += limpar_orfaos(db, "sessoes_alarme", meses, set(docs_sessoes_alarme.keys()))
     apagados += limpar_orfaos(db, "sessoes_bypass", meses, set(docs_sessoes_bypass.keys()))
+    apagados += limpar_orfaos(db, "sessoes_override", meses, set(docs_sessoes_override.keys()))
     apagados += limpar_orfaos(db, "resumos_alarme", meses, set(docs_resumo_alarme.keys()))
     apagados += limpar_orfaos(db, "resumos_bypass", meses, set(docs_resumo_bypass.keys()))
+    apagados += limpar_orfaos(db, "resumos_override", meses, set(docs_resumo_override.keys()))
+    apagados += limpar_orfaos(db, "resumos_eventos", meses, set(docs_resumo_eventos.keys()))
     print(f"  {apagados} documento(s) orfao(s) removido(s).")
 
     from firebase_admin import firestore

@@ -10,16 +10,22 @@ Se o alarme retornar ao normal sem nunca aparecer um ACK entre a abertura e o
 fechamento da sessao, consideramos que ele "retornou sozinho" (sem
 reconhecimento do operador).
 
-Tags de bypass (contendo "_BYP_") sao excluidas daqui porque sao tratadas
-separadamente em classificar_bypass.py - no InTouch, o proprio status de
-bypass tambem eh modelado como um alarme discreto (UNACK/ACK/ACK_RTN), entao
-precisamos escolher um dos dois classificadores para cada tag.
+Tags de bypass (contendo "_BYP_"), override ("_OV0_"/"_OV1_") e comando
+("_CMD_"/prefixo "CMD") sao excluidas daqui porque sao tratadas
+separadamente (classificar_bypass.py, classificar_override.py e a aba de
+Eventos) - no InTouch, o status dessas tags tambem eh modelado como um
+alarme discreto (UNACK/ACK/ACK_RTN), entao precisamos escolher um unico
+classificador para cada tag.
 """
+
+import re
 
 from sessoes import rastrear_sessoes, duracao_segundos, formatar_duracao
 
 
 SINAL_POR_TIPO = {"UNACK": "ON", "ACK": "ACK", "ACK_RTN": "OFF"}
+
+TAG_OVERRIDE = re.compile(r"_OV\d_", re.IGNORECASE)
 
 
 def eh_evento_de_alarme(e):
@@ -27,7 +33,12 @@ def eh_evento_de_alarme(e):
         return False
     if e["tipo_evento"] not in SINAL_POR_TIPO:
         return False
-    if "_BYP_" in e["tag"].upper() or e["tag"].upper().endswith("_BYPASS"):
+    tag = e["tag"].upper()
+    if "_BYP_" in tag or tag.endswith("_BYPASS"):
+        return False
+    if TAG_OVERRIDE.search(tag):
+        return False
+    if "_CMD_" in tag or tag.startswith("CMD"):
         return False
     return True
 
