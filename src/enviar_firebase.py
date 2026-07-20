@@ -300,7 +300,23 @@ def main():
              "historico completo da pasta informada. Util para nao estourar a "
              "cota diaria gratuita do Firestore em cargas iniciais grandes.",
     )
+    parser.add_argument(
+        "--apenas-colecoes", default=None, metavar="CATEGORIAS",
+        help="So GRAVA as categorias listadas, separadas por virgula, dentre "
+             "'alarme', 'bypass', 'override', 'eventos' (ex: 'override,eventos'). "
+             "Util pra completar um envio que ficou faltando (ex: cota diaria "
+             "estourou no meio de uma carga) sem regravar categorias que ja "
+             "estao em dia no Firestore.",
+    )
     args = parser.parse_args()
+    categorias_validas = {"alarme", "bypass", "override", "eventos"}
+    if args.apenas_colecoes:
+        categorias = {c.strip() for c in args.apenas_colecoes.split(",") if c.strip()}
+        invalidas = categorias - categorias_validas
+        if invalidas:
+            raise SystemExit(f"--apenas-colecoes invalido: {', '.join(sorted(invalidas))}")
+    else:
+        categorias = categorias_validas
 
     print(f"Lendo arquivos .ALG em: {args.pasta}")
     eventos, arquivos = carregar_pasta(args.pasta)
@@ -391,31 +407,31 @@ def main():
         id_resumo(r["mes_referencia"], r["tag"]): r for r in resumo_bypass
     }
 
+    colecoes_por_categoria = [
+        ("alarme", "sessoes_alarme", docs_sessoes_alarme),
+        ("bypass", "sessoes_bypass", docs_sessoes_bypass),
+        ("override", "sessoes_override", docs_sessoes_override),
+        ("alarme", "resumos_alarme", docs_resumo_alarme),
+        ("bypass", "resumos_bypass", docs_resumo_bypass),
+        ("override", "resumos_override", docs_resumo_override),
+        ("eventos", "resumos_eventos", docs_resumo_eventos),
+    ]
+    colecoes_selecionadas = [
+        (colecao, docs) for categoria, colecao, docs in colecoes_por_categoria
+        if categoria in categorias
+    ]
+    if len(categorias) < len(categorias_validas):
+        print(f"\n--apenas-colecoes={','.join(sorted(categorias))}: demais categorias nao serao tocadas.")
+
     print("\nGravando no Firestore...")
-    gravar_em_lotes(db, "sessoes_alarme", docs_sessoes_alarme)
-    print(f"  sessoes_alarme: {len(docs_sessoes_alarme)} documento(s)")
-    gravar_em_lotes(db, "sessoes_bypass", docs_sessoes_bypass)
-    print(f"  sessoes_bypass: {len(docs_sessoes_bypass)} documento(s)")
-    gravar_em_lotes(db, "sessoes_override", docs_sessoes_override)
-    print(f"  sessoes_override: {len(docs_sessoes_override)} documento(s)")
-    gravar_em_lotes(db, "resumos_alarme", docs_resumo_alarme)
-    print(f"  resumos_alarme: {len(docs_resumo_alarme)} documento(s)")
-    gravar_em_lotes(db, "resumos_bypass", docs_resumo_bypass)
-    print(f"  resumos_bypass: {len(docs_resumo_bypass)} documento(s)")
-    gravar_em_lotes(db, "resumos_override", docs_resumo_override)
-    print(f"  resumos_override: {len(docs_resumo_override)} documento(s)")
-    gravar_em_lotes(db, "resumos_eventos", docs_resumo_eventos)
-    print(f"  resumos_eventos: {len(docs_resumo_eventos)} documento(s)")
+    for colecao, docs in colecoes_selecionadas:
+        gravar_em_lotes(db, colecao, docs)
+        print(f"  {colecao}: {len(docs)} documento(s)")
 
     print("\nLimpando documentos orfaos (sessoes que mudaram de fronteira entre execucoes)...")
     apagados = 0
-    apagados += limpar_orfaos(db, "sessoes_alarme", meses, set(docs_sessoes_alarme.keys()))
-    apagados += limpar_orfaos(db, "sessoes_bypass", meses, set(docs_sessoes_bypass.keys()))
-    apagados += limpar_orfaos(db, "sessoes_override", meses, set(docs_sessoes_override.keys()))
-    apagados += limpar_orfaos(db, "resumos_alarme", meses, set(docs_resumo_alarme.keys()))
-    apagados += limpar_orfaos(db, "resumos_bypass", meses, set(docs_resumo_bypass.keys()))
-    apagados += limpar_orfaos(db, "resumos_override", meses, set(docs_resumo_override.keys()))
-    apagados += limpar_orfaos(db, "resumos_eventos", meses, set(docs_resumo_eventos.keys()))
+    for colecao, docs in colecoes_selecionadas:
+        apagados += limpar_orfaos(db, colecao, meses, set(docs.keys()))
     print(f"  {apagados} documento(s) orfao(s) removido(s).")
 
     from firebase_admin import firestore
