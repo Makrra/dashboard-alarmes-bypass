@@ -155,6 +155,8 @@ tbody tr:hover { background: rgba(255,255,255,.03); }
 .resultado-info { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
 .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.85rem; }
 .loading { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9rem; }
+.error-state { text-align: center; padding: 40px 20px; color: var(--red); font-size: 0.85rem; }
+.error-state .btn { margin-top: 12px; }
 /* DASHBOARD */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi-card {
@@ -394,12 +396,35 @@ function mostrarTela(id) {
   document.getElementById('app').style.display = id === 'app' ? 'block' : 'none';
 }
 
+function mensagemErroFirestore(e) {
+  if (e && e.code === 'resource-exhausted') {
+    return 'Cota gratuita do Firestore esgotada por hoje. Tente novamente mais tarde.';
+  }
+  if (e && e.code === 'permission-denied') {
+    return 'Sem permissão para ler esses dados.';
+  }
+  return 'Não foi possível carregar os dados. Verifique sua conexão e tente novamente.';
+}
+
+function mostrarErro(alvo, e, retry) {
+  console.error(e);
+  alvo.innerHTML = `
+    <div class="error-state">
+      <div>${escapeHtml(mensagemErroFirestore(e))}</div>
+      <button class="btn btn-primary" onclick="(${retry})()">Tentar de novo</button>
+    </div>
+  `;
+}
+
 async function estaAprovado() {
   try {
     await db.collection('metadados').doc('periodos').get();
     return true;
   } catch (e) {
-    return false; // permission-denied => autenticado mas ainda nao esta na allowlist
+    if (e && e.code === 'permission-denied') {
+      return false; // autenticado mas ainda nao esta na allowlist
+    }
+    throw e; // outro erro (cota, rede, etc.) nao deve ser confundido com "nao aprovado"
   }
 }
 
@@ -408,7 +433,15 @@ auth.onAuthStateChanged(async user => {
     mostrarTela('login-screen');
     return;
   }
-  if (await estaAprovado()) {
+  let aprovado;
+  try {
+    aprovado = await estaAprovado();
+  } catch (e) {
+    mostrarTela('app');
+    mostrarErro(document.getElementById('dashboard-conteudo'), e, '() => location.reload()');
+    return;
+  }
+  if (aprovado) {
     document.getElementById('usuario-logado').textContent = user.email;
     document.getElementById('btn-aprovacoes').style.display = user.uid === ADMIN_UID ? 'inline-block' : 'none';
     mostrarTela('app');
@@ -1186,15 +1219,21 @@ function agruparOperadoresBypass(lista) {
 
 async function carregarDashboard() {
   const alvo = document.getElementById('dashboard-conteudo');
-  const [ra, rb, aa, ab, ro, ao, re] = await Promise.all([
-    db.collection('resumos_alarme').get(),
-    db.collection('resumos_bypass').get(),
-    db.collection('sessoes_alarme').where('status', '==', 'ATIVO (em aberto)').get(),
-    db.collection('sessoes_bypass').where('status', '==', 'ATIVO (em aberto)').get(),
-    db.collection('resumos_override').get(),
-    db.collection('sessoes_override').where('status', '==', 'ATIVO (em aberto)').get(),
-    db.collection('resumos_eventos').get(),
-  ]);
+  let ra, rb, aa, ab, ro, ao, re;
+  try {
+    [ra, rb, aa, ab, ro, ao, re] = await Promise.all([
+      db.collection('resumos_alarme').get(),
+      db.collection('resumos_bypass').get(),
+      db.collection('sessoes_alarme').where('status', '==', 'ATIVO (em aberto)').get(),
+      db.collection('sessoes_bypass').where('status', '==', 'ATIVO (em aberto)').get(),
+      db.collection('resumos_override').get(),
+      db.collection('sessoes_override').where('status', '==', 'ATIVO (em aberto)').get(),
+      db.collection('resumos_eventos').get(),
+    ]);
+  } catch (e) {
+    mostrarErro(alvo, e, 'carregarDashboard');
+    return;
+  }
   estado.todosResumoAlarme = ra.docs.map(d => d.data());
   estado.todosResumoBypass = rb.docs.map(d => d.data());
   estado.ativosAlarme = aa.docs.map(d => d.data());
@@ -1533,7 +1572,13 @@ function desenharGraficosBypass() {
 // ---------- CARREGAMENTO DE DADOS (Explorar Dados) ----------
 
 async function carregarPeriodos() {
-  const doc = await db.collection('metadados').doc('periodos').get();
+  let doc;
+  try {
+    doc = await db.collection('metadados').doc('periodos').get();
+  } catch (e) {
+    mostrarErro(document.getElementById('conteudo'), e, 'carregarPeriodos');
+    return;
+  }
   const meses = (doc.exists ? (doc.data().meses || []) : []).slice().sort().reverse();
   const select = document.getElementById('filtro-mes');
   select.innerHTML = meses.length
@@ -1554,13 +1599,20 @@ function aoTrocarMes() {
 
 async function carregarMes(mes) {
   estado.mes = mes;
-  document.getElementById('conteudo').innerHTML = '<div class="loading">Carregando...</div>';
-  const [sa, sb, ra, rb] = await Promise.all([
-    db.collection('sessoes_alarme').where('mes_referencia', '==', mes).get(),
-    db.collection('sessoes_bypass').where('mes_referencia', '==', mes).get(),
-    db.collection('resumos_alarme').where('mes_referencia', '==', mes).get(),
-    db.collection('resumos_bypass').where('mes_referencia', '==', mes).get(),
-  ]);
+  const alvo = document.getElementById('conteudo');
+  alvo.innerHTML = '<div class="loading">Carregando...</div>';
+  let sa, sb, ra, rb;
+  try {
+    [sa, sb, ra, rb] = await Promise.all([
+      db.collection('sessoes_alarme').where('mes_referencia', '==', mes).get(),
+      db.collection('sessoes_bypass').where('mes_referencia', '==', mes).get(),
+      db.collection('resumos_alarme').where('mes_referencia', '==', mes).get(),
+      db.collection('resumos_bypass').where('mes_referencia', '==', mes).get(),
+    ]);
+  } catch (e) {
+    mostrarErro(alvo, e, `() => carregarMes('${mes}')`);
+    return;
+  }
   estado.sessoesAlarme = sa.docs.map(d => d.data());
   estado.sessoesBypass = sb.docs.map(d => d.data());
   estado.resumoAlarme = ra.docs.map(d => d.data());
