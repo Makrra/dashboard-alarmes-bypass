@@ -591,7 +591,7 @@ const ESQUELETO_DASHBOARD = `
     </div>
 
     <div class="chart-card">
-      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros (afetam tudo abaixo)</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros</div>
       <label class="form-label" style="display:block; margin-bottom:6px">Período (mês em que o alarme atuou)</label>
       <div class="subtabs" id="alarme-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoAlarme('tudo')">Tudo</button>
@@ -676,7 +676,8 @@ const ESQUELETO_DASHBOARD = `
     </div>
 
     <div class="chart-card">
-      <div class="section-title"><svg class="icon"><use href="#ic-calendar"></use></svg> Período analisado (considera o mês em que o bypass foi ativado)</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros</div>
+      <label class="form-label" style="display:block; margin-bottom:6px">Período (mês em que o bypass foi ativado)</label>
       <div class="subtabs" id="bypass-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoBypass('tudo')">Tudo</button>
         <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoBypass('mes')">Este mês</button>
@@ -703,27 +704,6 @@ const ESQUELETO_DASHBOARD = `
       <div class="alerta-lista" id="lista-bypass-criticos"></div>
     </div>
 
-    <div class="chart-card">
-      <div class="section-title"><svg class="icon"><use href="#ic-edit"></use></svg> Justificativas de Bypass</div>
-      <div class="nota-dashboard">
-        Uma tag só tem UMA justificativa - se já existir, ela é carregada abaixo
-        para edição em vez de criar outra.
-      </div>
-      <div class="form-group">
-        <label class="form-label">Tag do bypass</label>
-        <input class="form-control" id="justificativa-tag" placeholder="ex: PSLL_1210003A" list="lista-tags-bypass" onchange="carregarJustificativaDaTag()">
-        <datalist id="lista-tags-bypass"></datalist>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Justificativa</label>
-        <textarea class="form-control" id="justificativa-texto" rows="3" placeholder="Motivo do bypass continuar ativo..."></textarea>
-      </div>
-      <button class="btn btn-primary" id="justificativa-btn-salvar" onclick="salvarJustificativa()">Salvar justificativa</button>
-      <div class="login-error" id="justificativa-erro"></div>
-
-      <div id="lista-justificativas" style="margin-top:16px"><div class="loading">Carregando...</div></div>
-    </div>
-
     <div class="charts-grid">
       <div class="chart-card">
         <h3><svg class="icon"><use href="#ic-bars"></use></svg> Bypass por mês (nº de ativações)</h3>
@@ -748,7 +728,8 @@ const ESQUELETO_DASHBOARD = `
     </div>
 
     <div class="chart-card">
-      <div class="section-title"><svg class="icon"><use href="#ic-calendar"></use></svg> Período analisado (considera o mês em que o override foi ativado)</div>
+      <div class="section-title"><svg class="icon"><use href="#ic-filter"></use></svg> Filtros</div>
+      <label class="form-label" style="display:block; margin-bottom:6px">Período (mês em que o override foi ativado)</label>
       <div class="subtabs" id="override-periodo-filtros">
         <button class="subtab-btn active" data-filtro="tudo" onclick="trocarPeriodoOverride('tudo')">Tudo</button>
         <button class="subtab-btn" data-filtro="mes" onclick="trocarPeriodoOverride('mes')">Este mês</button>
@@ -1170,7 +1151,6 @@ function trocarDashboardTipo(tipo) {
       desenharGraficosAlarme();
     } else if (tipo === 'bypass') {
       desenharGraficosBypass();
-      carregarJustificativas();
     } else if (tipo === 'override') {
       desenharGraficosOverride();
     } else if (tipo === 'eventos') {
@@ -1381,91 +1361,9 @@ function renderizarBypassCriticos() {
           <div class="alerta-critico-dias">${dias} dias · ${situacao}</div>
         </div>
         <div class="progresso-bar"><div class="progresso-fill ${nivel}" style="width:${pct}%"></div></div>
-        <button class="btn" style="align-self:flex-start; padding:4px 10px; font-size:0.72rem; background:var(--accent-dim); color:#fff" onclick="preencherJustificativa('${escapeHtml(s.tag)}')"><svg class="icon"><use href="#ic-edit"></use></svg> Justificar</button>
       </div>
     `;
   }).join('');
-}
-
-// ---------- JUSTIFICATIVAS DE BYPASS (uma por tag, editavel) ----------
-
-let todasJustificativas = {}; // tag -> {tag, descricao, texto, autor_email, criado_em, atualizado_em}
-
-function preencherJustificativa(tag) {
-  trocarDashboardTipo('bypass');
-  document.getElementById('justificativa-tag').value = tag;
-  carregarJustificativaDaTag();
-  const campo = document.getElementById('justificativa-texto');
-  campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  campo.focus();
-}
-
-function carregarJustificativaDaTag() {
-  const tag = document.getElementById('justificativa-tag').value.trim();
-  const existente = todasJustificativas[tag];
-  document.getElementById('justificativa-texto').value = existente ? existente.texto : '';
-  document.getElementById('justificativa-btn-salvar').textContent = existente ? 'Salvar edição' : 'Salvar justificativa';
-  document.getElementById('justificativa-erro').textContent = '';
-}
-
-async function salvarJustificativa() {
-  const tag = document.getElementById('justificativa-tag').value.trim();
-  const texto = document.getElementById('justificativa-texto').value.trim();
-  const erroEl = document.getElementById('justificativa-erro');
-  erroEl.textContent = '';
-  if (!tag || !texto) { erroEl.textContent = 'Preencha a tag e a justificativa.'; return; }
-
-  const existente = todasJustificativas[tag];
-  const bypassAtivo = estado.ativosBypass.find(s => s.tag === tag);
-
-  try {
-    await db.collection('justificativas_bypass').doc(tag).set({
-      tag,
-      descricao: bypassAtivo ? bypassAtivo.descricao : (existente ? existente.descricao : ''),
-      texto,
-      autor_email: auth.currentUser.email,
-      criado_em: existente ? existente.criado_em : firebase.firestore.FieldValue.serverTimestamp(),
-      atualizado_em: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    await carregarJustificativas();
-    carregarJustificativaDaTag();
-  } catch (e) {
-    erroEl.textContent = 'Não foi possível salvar. Tente novamente.';
-  }
-}
-
-async function carregarJustificativas() {
-  const snap = await db.collection('justificativas_bypass').get();
-  todasJustificativas = {};
-  snap.docs.forEach(d => { todasJustificativas[d.id] = d.data(); });
-
-  const tags = new Set(estado.ativosBypass.map(s => s.tag));
-  Object.keys(todasJustificativas).forEach(t => tags.add(t));
-  document.getElementById('lista-tags-bypass').innerHTML =
-    Array.from(tags).sort().map(t => `<option value="${escapeHtml(t)}"></option>`).join('');
-
-  renderizarListaJustificativas();
-}
-
-function renderizarListaJustificativas() {
-  const alvo = document.getElementById('lista-justificativas');
-  const entradas = Object.values(todasJustificativas).sort((a, b) => (a.tag || '').localeCompare(b.tag || ''));
-
-  if (!entradas.length) {
-    alvo.innerHTML = '<div class="empty-state">Nenhuma justificativa cadastrada ainda.</div>';
-    return;
-  }
-
-  alvo.innerHTML = entradas.map(j => `
-    <div class="card" style="margin-bottom:10px">
-      <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:6px">
-        <div class="alerta-tag">${escapeHtml(j.tag)}</div>
-        <div class="alerta-desc">atualizado em ${formatarData(j.atualizado_em)} · ${escapeHtml(j.autor_email || '—')}</div>
-      </div>
-      <div style="font-size:0.82rem; margin-bottom:8px">${escapeHtml(j.texto)}</div>
-      <button class="btn" style="padding:4px 10px; font-size:0.72rem; background:var(--accent-dim); color:#fff" onclick="preencherJustificativa('${escapeHtml(j.tag)}')"><svg class="icon"><use href="#ic-edit"></use></svg> Editar</button>
-    </div>
-  `).join('');
 }
 
 function montarItemAlerta(s, classe) {
